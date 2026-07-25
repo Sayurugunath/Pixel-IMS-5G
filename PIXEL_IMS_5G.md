@@ -2,7 +2,7 @@
 
 Pixel IMS 5G is an experimental, root- or Shizuku-powered Android app for Google Tensor Pixels. This build is tested on a rooted Pixel 7 Pro running Android 17.
 
-Version 0.12.5 adds a two-minute, 24-sample field test with NRARFCN/frequency, SS/CSI measurements, registration and reject state, callback events, per-sample PCC/SCC and TelephonyRegistry evidence, CarrierConfig gates, and start/end root radio evidence. Version 0.12 separated Controls and Monitoring and added the 5G attach trace, CarrierConfig diff viewer, NR capability decoder, and root physical-channel monitoring.
+Version 0.12.6 uses the corrected Android application ID `com.nirmala.pixel5gims`. Version 0.12.5 added a two-minute, 24-sample field test with NRARFCN/frequency, SS/CSI measurements, registration and reject state, callback events, per-sample PCC/SCC and TelephonyRegistry evidence, CarrierConfig gates, and start/end root radio evidence.
 
 ## Features
 
