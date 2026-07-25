@@ -1,6 +1,6 @@
 # Pixel IMS 5G [5G Works! : Sri Lanka]
 
-An experimental root- or Shizuku-powered IMS and radio configuration app for Google Tensor Pixel phones. It uses model-independent Android telephony interfaces for Pixel 6 through Pixel 10 and is developed and tested on a rooted Pixel 7 Pro running Android 17.
+An experimental root- or Shizuku-powered IMS and radio configuration app for Google Tensor Pixel phones. It uses model-independent Android telephony interfaces for Pixel 6 through Pixel 10 and is developed and tested on a rooted Pixel 7 Pro running Android 17. [Note : You need root access to work 5G, with shizuku : VoLTE, LTE+, Bandlocking, Fieldtest, Other options are working]
 
 Android application ID: `com.nirmala.pixel5gims`.
 
