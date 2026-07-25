@@ -221,6 +221,12 @@
     <string name="regional_patch_description">Experimental systemless Tensor modem patch. It copies this firmware’s own cfg.db, validates the SQLite schema and integrity, and maps only wildcard/PTCRB carrier entries to the firmware’s permissive profile. It does not fake the SIM country, registered PLMN, or Wi-Fi regulatory country.</string>
     <string name="regional_patch_warning">Root and Magisk only. A reboot is required. Before applying a firmware update, remove this patch and reboot; after the update, validate and install a fresh copy. The installer refuses unknown layouts. This can open a local modem profile but cannot bypass Dialog authentication, tower EN-DC configuration, subscriber entitlement, or RF hardware limits.</string>
     <string name="regional_patch_root_only">Root mode with Magisk is required. This operation is unavailable through Shizuku.</string>
+    <string name="shizuku_regional_profile">Regional 5G compatibility (Shizuku)</string>
+    <string name="shizuku_regional_description">Applies every reversible Android-side regional gate available to the Shizuku shell: automatic bands, LTE + NR network policy, NSA + SA CarrierConfig, VoLTE, VoWiFi, VoNR, LTE+ and IMS visibility. It then reads the effective values back.</string>
+    <string name="shizuku_regional_apply">Apply Shizuku regional profile</string>
+    <string name="shizuku_regional_applied">Android-side Shizuku gates are open. Test near the 5G site.</string>
+    <string name="shizuku_regional_partial">Shizuku could not open: %1$s</string>
+    <string name="shizuku_modem_patch_limit">Important: this is not the Tensor cfg.db modem patch that made 5G work in the root comparison. Android 17 blocks UID 2000 from installing a vendor/Magisk overlay. If the modem profile still rejects EN-DC after these gates pass, the same modem fix still requires root.</string>
     <string name="regional_patch_confirm_title">Install regional modem patch?</string>
     <string name="regional_patch_confirm_message">The app will validate and stage a systemless vendor carrier database overlay. The change becomes active after reboot. If service becomes unstable, return here, schedule removal, and reboot.</string>
     <string name="regional_patch_remove_confirm_title">Remove regional modem patch?</string>

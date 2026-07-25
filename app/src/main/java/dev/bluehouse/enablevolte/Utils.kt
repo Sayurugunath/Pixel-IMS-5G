@@ -30,7 +30,7 @@ fun checkShizukuPermission(code: Int): ShizukuStatus =
             ShizukuStatus.GRANTED
         } else {
             if (!Shizuku.shouldShowRequestPermissionRationale()) {
-                Shizuku.requestPermission(0)
+                Shizuku.requestPermission(code)
             }
             ShizukuStatus.NOT_GRANTED
         }

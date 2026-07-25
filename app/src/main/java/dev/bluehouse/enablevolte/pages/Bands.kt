@@ -134,6 +134,8 @@ fun Bands(
     var noServiceChange by rememberSaveable { mutableStateOf<String?>(null) }
     var rootForceReport by remember { mutableStateOf<SubscriptionModer.RootForceReport?>(null) }
     var rootForceBusy by rememberSaveable { mutableStateOf(false) }
+    var shizukuRegionalBusy by rememberSaveable { mutableStateOf(false) }
+    var shizukuRegionalResult by remember { mutableStateOf<SubscriptionModer.ShizukuRegionalResult?>(null) }
     var regionalPatch by remember { mutableStateOf<RegionalModemPatchStatus?>(null) }
     var regionalPatchBusy by rememberSaveable { mutableStateOf(false) }
     var regionalConfirmation by rememberSaveable { mutableStateOf<String?>(null) }
@@ -267,6 +269,28 @@ fun Bands(
                 Toast.LENGTH_LONG,
             ).show()
             rootForceBusy = false
+            loadSelection()
+        }
+    }
+
+    fun applyShizukuRegionalProfile() {
+        if (shizukuRegionalBusy) return
+        scope.launch {
+            shizukuRegionalBusy = true
+            shizukuRegionalResult = withContext(Dispatchers.IO) {
+                runCatching { moder.applyShizukuRegionalCompatibility() }.getOrNull()
+            }
+            val result = shizukuRegionalResult
+            val message = when {
+                result == null -> context.getString(R.string.profile_failed)
+                result.applied -> context.getString(R.string.shizuku_regional_applied)
+                else -> context.getString(
+                    R.string.shizuku_regional_partial,
+                    result.failedGates.joinToString().ifEmpty { context.getString(R.string.status_unknown) },
+                )
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            shizukuRegionalBusy = false
             loadSelection()
         }
     }
@@ -459,8 +483,64 @@ fun Bands(
             }
         }
 
-        HeaderText(text = stringResource(R.string.regional_modem_patch))
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
+        if (PrivilegeManager.activeMode == PrivilegeMode.SHIZUKU) {
+            HeaderText(text = stringResource(R.string.shizuku_regional_profile))
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.shizuku_regional_description))
+                    shizukuRegionalResult?.let { result ->
+                        ClickablePropertyView(
+                            label = stringResource(R.string.carrier_nr_modes),
+                            value = buildString {
+                                if (result.report.carrierNsa) append("NSA")
+                                if (result.report.carrierNsa && result.report.carrierSa) append(" + ")
+                                if (result.report.carrierSa) append("SA")
+                                if (!result.report.carrierNsa && !result.report.carrierSa) {
+                                    append(context.getString(R.string.gate_blocked))
+                                }
+                            },
+                        )
+                        result.report.gates
+                            .filter {
+                                it.reason == android.telephony.TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER ||
+                                    it.reason == android.telephony.TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_CARRIER
+                            }
+                            .forEach { gate ->
+                                ClickablePropertyView(
+                                    label = gate.label,
+                                    value = if (gate.lteAllowed && gate.nrAllowed) {
+                                        stringResource(R.string.gate_open)
+                                    } else {
+                                        stringResource(R.string.gate_blocked)
+                                    },
+                                )
+                            }
+                    }
+                    Button(
+                        enabled = !shizukuRegionalBusy,
+                        onClick = ::applyShizukuRegionalProfile,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            stringResource(
+                                if (shizukuRegionalBusy) R.string.applying_profile else R.string.shizuku_regional_apply,
+                            ),
+                        )
+                    }
+                    Text(
+                        stringResource(R.string.shizuku_modem_patch_limit),
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+        }
+
+        if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+            HeaderText(text = stringResource(R.string.regional_modem_patch))
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -550,6 +630,7 @@ fun Bands(
                     stringResource(R.string.regional_patch_warning),
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
             }
         }
 

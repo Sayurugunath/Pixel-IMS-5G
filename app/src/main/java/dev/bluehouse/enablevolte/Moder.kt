@@ -299,6 +299,12 @@ class SubscriptionModer(
         val report: RootForceReport,
     )
 
+    data class ShizukuRegionalResult(
+        val applied: Boolean,
+        val failedGates: List<String>,
+        val report: RootForceReport,
+    )
+
     val easyModeEnabled: Boolean
         get() = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
             .getBoolean(EASY_MODE_PREFIX + subscriptionId, false)
@@ -1132,6 +1138,78 @@ class SubscriptionModer(
             restartIMSRegistration()
             true
         }.onFailure { Log.e(TAG, "Unable to apply compatibility profile", it) }.getOrDefault(false)
+
+    /**
+     * Applies the strongest reversible regional 5G profile available to the Shizuku shell UID.
+     * This deliberately does not claim to replace Tensor cfg.db: Android 17 SELinux and verified
+     * vendor partitions keep that operation root-only.
+     */
+    fun applyShizukuRegionalCompatibility(): ShizukuRegionalResult {
+        check(PrivilegeManager.activeMode == PrivilegeMode.SHIZUKU) {
+            "The Shizuku regional profile requires Shizuku mode"
+        }
+        saveChangeSnapshot("Applied Shizuku regional 5G profile")
+        val failed = mutableListOf<String>()
+        val phone = this.loadCachedInterface { telephony }
+        val requiredTypes =
+            TelephonyManager.NETWORK_TYPE_BITMASK_LTE or TelephonyManager.NETWORK_TYPE_BITMASK_NR
+
+        runCatching { setBandSelectionInternal(intArrayOf(), intArrayOf()) }
+            .onFailure { failed += "Automatic bands" }
+        if (!runCatching { setRadioMode(1, recordChange = false) }.getOrDefault(false)) {
+            failed += "LTE + NR allowed-network policy"
+        }
+        runCatching { restartIMSRegistration() }.onFailure { failed += "IMS restart" }
+        runCatching {
+            publishBundle {
+                it.putIntArray(
+                    CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                    intArrayOf(
+                        CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
+                        CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA,
+                    ),
+                )
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_VONR_ENABLED_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_VONR_SETTING_VISIBILITY_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_MODE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_ROAMING_MODE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_ENHANCED_4G_LTE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_ENHANCED_4G_LTE_ON_BY_DEFAULT_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_ENHANCED_4G_LTE_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_4G_FOR_LTE_DATA_ICON_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_IMS_REGISTRATION_STATUS_BOOL, true)
+            }
+        }.onFailure { failed += "Carrier configuration" }
+
+        Thread.sleep(1_250)
+        listOf(
+            TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER to "User network policy",
+            TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_CARRIER to "Carrier network policy",
+        ).forEach { (reason, label) ->
+            val current = runCatching { phone.getAllowedNetworkTypesForReason(subscriptionId, reason) }
+                .getOrNull() ?: return@forEach
+            val accepted = runCatching {
+                setAllowedNetworkTypesForReason(phone, reason, current or requiredTypes)
+            }.getOrDefault(false)
+            if (!accepted) failed += label
+        }
+        Thread.sleep(500)
+        val report = getRootForceReport()
+        val relevantGates = report.gates.filter {
+            it.reason == TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_USER ||
+                it.reason == TelephonyManager.ALLOWED_NETWORK_TYPES_REASON_CARRIER
+        }
+        val gatesOpen = relevantGates.isNotEmpty() && relevantGates.all { it.lteAllowed && it.nrAllowed }
+        return ShizukuRegionalResult(
+            applied = failed.isEmpty() && gatesOpen && report.carrierNsa,
+            failedGates = failed.distinct(),
+            report = report,
+        )
+    }
 
     /** Returns null on devices without Samsung SLSI's OEM radio service. */
     fun getTensorLteCaEnabled(): Boolean? {

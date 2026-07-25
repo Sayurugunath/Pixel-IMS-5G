@@ -4,9 +4,24 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current release: `1.0.0`. The one-time uninstall/reinstall notice applies specifically
+Current release: `1.0.1`. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
+
+## Verified 5G field result
+
+Dialog Sri Lanka 5G NSA was verified on a Pixel 7 Pro near a live site. The capture
+shows LTE B3 + B1 + B41 carrier aggregation with an n78 (3500 MHz) NSA secondary
+cell. The matching field-test report exposed physical NR band 78, NRARFCN 628896,
+PCI 883, approximately 3433.44 MHz downlink, and 100 MHz NR bandwidth.
+
+| Live NSA connection | One field speed result |
+| --- | --- |
+| ![Dialog LTE CA plus 5G NSA 3500 on Pixel 7 Pro](docs/screenshots/dialog-5g-nsa-n78-field-result.jpeg) | ![Dialog 5G field speed test: 471 Mbps down and 40.9 Mbps up](docs/screenshots/dialog-5g-nsa-speedtest-field-result.jpeg) |
+
+The speed screenshot is one real-world result (471 Mbps down / 40.9 Mbps up), not a
+performance guarantee. Coverage, site load, radio conditions, plan entitlement and
+carrier policy all affect whether 5G attaches and how fast it runs.
 
 ## Features
 
@@ -36,6 +51,21 @@ can update normally to later versions.
 - Use the separate Monitoring section for TelephonyRegistry events, evidence-based 5G attach tracing, effective-vs-Android-default CarrierConfig differences, NR capability decoding, and root-only PCC/SCC physical channels.
 - In Root mode, capture sanitized TelephonyRegistry, phone-service, and radio-log evidence. Shizuku mode clearly marks phone-process and `READ_PRECISE_PHONE_STATE` internals as unavailable.
 - Display LTE+ only when Android confirms carrier aggregation, 5G NSA/SA only from connected NR state, and VoWiFi only from active IMS-over-IWLAN registration.
+
+## Shizuku regional compatibility on Android 17
+
+Version 1.0.1 adds a dedicated Shizuku regional profile. It applies and verifies the
+strongest reversible Android-side changes available to UID 2000: automatic bands,
+LTE + NR user/carrier policies, NSA + SA CarrierConfig, VoLTE, VoWiFi, VoNR, LTE+ and
+IMS visibility. The result screen reads the effective NR modes and network gates back
+instead of treating a Binder call as proof of success.
+
+This profile is not the Tensor `cfg.db` modem patch. The paired field-test reports show
+that the modem profile change—not the identical Android CarrierConfig—was the decisive
+difference in the tested Dialog NSA attach. Android 17 SELinux and verified vendor
+partitions do not allow a normal Shizuku UID 2000 process to install a Magisk/vendor
+overlay. If all Shizuku gates pass but the modem still rejects EN-DC, that exact modem
+database fix remains root-only.
 
 ## Install
 
