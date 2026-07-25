@@ -13,8 +13,8 @@ android {
         // Every Tensor Pixel (Pixel 6 and newer) launched on Android 12 / API 31 or later.
         minSdk 31
         targetSdk 36
-        versionCode 16
-        versionName "0.12.6"
+        versionCode 17
+        versionName "0.12.10F"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -55,6 +55,7 @@ android {
 }
 
 dependencies {
+    testImplementation 'junit:junit:4.13.2'
     implementation 'androidx.test:monitor:1.8.0'
     debugImplementation 'androidx.compose.ui:ui-tooling:1.9.3'
     def compose_runtime_version = "1.9.3"

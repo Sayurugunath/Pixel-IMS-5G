@@ -20,8 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.navigation.NavController
 import dev.bluehouse.enablevolte.BuildConfig
@@ -118,12 +120,45 @@ fun Home(navController: NavController) {
         BooleanPropertyView(label = stringResource(R.string.sim_detected), toggled = subscriptions.isNotEmpty())
         BooleanPropertyView(label = stringResource(R.string.volte_supported_by_device), toggled = deviceIMSEnabled)
 
+        HeaderText(text = stringResource(R.string.control_center))
+        Text(
+            text = stringResource(R.string.control_center_description),
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+
         for (idx in subscriptions.indices) {
+            val subscription = subscriptions[idx]
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = subscription.uniqueName,
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(stringResource(R.string.ims_controls_summary))
+                    Button(
+                        onClick = { navController.navigate("config/${subscription.subscriptionId}") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.open_ims_5g_controls))
+                    }
+                    Text(stringResource(R.string.band_controls_summary))
+                    OutlinedButton(
+                        onClick = { navController.navigate("bands/${subscription.subscriptionId}") },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.open_band_lte_controls))
+                    }
+                }
+            }
+
             var isRegistered = false
             if (isIMSRegistered.isNotEmpty()) {
                 isRegistered = isIMSRegistered[idx]
             }
-            HeaderText(text = stringResource(R.string.ims_status_for, subscriptions[idx].uniqueName))
+            HeaderText(text = stringResource(R.string.ims_status_for, subscription.uniqueName))
             BooleanPropertyView(
                 label = stringResource(R.string.ims_status),
                 toggled = isRegistered,
@@ -146,7 +181,7 @@ fun Home(navController: NavController) {
                         Button(onClick = {
                             scope.launch {
                                 withContext(Dispatchers.IO) {
-                                    SubscriptionModer(context, subscriptions[idx].subscriptionId).restoreGoogleDefaults()
+                                    SubscriptionModer(context, subscription.subscriptionId).restoreGoogleDefaults()
                                 }
                                 loadFlags()
                             }

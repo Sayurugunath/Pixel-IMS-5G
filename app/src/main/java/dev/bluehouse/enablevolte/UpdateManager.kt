@@ -57,7 +57,12 @@ object UpdateManager {
     }
 
     fun isNewer(candidate: String, current: String = BuildConfig.VERSION_NAME): Boolean {
-        fun parts(value: String) = value.substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
+        // Accept project release labels such as 0.12.10F while comparing their numeric
+        // Android release sequence. A suffix is a build label, not part of the ordering.
+        fun parts(value: String) = value
+            .removePrefix("v")
+            .split('.')
+            .map { part -> part.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
         val candidateParts = parts(candidate)
         val currentParts = parts(current)
         for (index in 0 until maxOf(candidateParts.size, currentParts.size)) {

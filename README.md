@@ -4,6 +4,10 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
+Current release: `0.12.10F`. The one-time uninstall/reinstall notice applies specifically
+to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
+can update normally to `0.12.10F`.
+
 ## Features
 
 - Enable VoLTE, VoNR, VoWiFi, NSA and SA carrier configuration.

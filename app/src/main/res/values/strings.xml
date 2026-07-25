@@ -99,6 +99,12 @@
     <string name="add_status_tile">Add IMS status display tile</string>
     <string name="add_toggle_tile">Add VoLTE config toggle tile</string>
     <string name="sim_config">SIM Config</string>
+    <string name="control_center">Controls</string>
+    <string name="control_center_description">Monitoring is read-only and separate. Choose a SIM below to open every IMS, 5G, LTE+, radio, CarrierConfig, expert, and band control.</string>
+    <string name="ims_controls_summary">VoLTE, VoWiFi, VoNR, NSA/SA architecture, radio mode, IMS restart, CarrierConfig, expert settings, and reset controls.</string>
+    <string name="open_ims_5g_controls">IMS &amp; 5G controls</string>
+    <string name="band_controls_summary">Easy Mode, LTE carrier aggregation, Auto/Force NSA/Force SA, root-force diagnostics, and selectable LTE/NR bands.</string>
+    <string name="open_band_lte_controls">Band selection &amp; LTE+</string>
     <string name="config_dump_viewer">Config Dump Viewer</string>
     <string name="bands">Bands</string>
     <string name="network_monitor">Network monitor</string>
