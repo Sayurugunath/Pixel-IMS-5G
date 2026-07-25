@@ -2,7 +2,7 @@
 
 Pixel IMS 5G is an experimental, root- or Shizuku-powered Android app for Google Tensor Pixels. This build is tested on a rooted Pixel 7 Pro running Android 17.
 
-Version 0.12.10F restores the complete per-SIM control entry points while keeping Monitoring fully separate. Version 0.12.6 introduced the corrected Android application ID `com.nirmala.pixel5gims`; only that migration requires users of `com.fibc.pixel5gims` to uninstall the old application, install 0.12.6, and approve Root or Shizuku again. Existing 0.12.6 installations update normally. Version 0.12.5 added a two-minute, 24-sample field test with NRARFCN/frequency, SS/CSI measurements, registration and reject state, callback events, per-sample PCC/SCC and TelephonyRegistry evidence, CarrierConfig gates, and start/end root radio evidence.
+Version 0.12.11F adds a validated, reversible Magisk `cfg.db` regional modem compatibility patch. Version 0.12.10F restored the complete per-SIM control entry points while keeping Monitoring fully separate. Version 0.12.6 introduced the corrected Android application ID `com.nirmala.pixel5gims`; only that migration requires users of `com.fibc.pixel5gims` to uninstall the old application, install 0.12.6, and approve Root or Shizuku again. Existing 0.12.6 installations update normally. Version 0.12.5 added a two-minute, 24-sample field test with NRARFCN/frequency, SS/CSI measurements, registration and reject state, callback events, per-sample PCC/SCC and TelephonyRegistry evidence, CarrierConfig gates, and start/end root radio evidence.
 
 ## Features
 
@@ -33,6 +33,7 @@ Version 0.12.10F restores the complete per-SIM control entry points while keepin
 - Audit the User, Power, Carrier, 2G-control, and Test network-type gates in Root mode.
 - Force LTE + NR through every gate Android 17 exposes, set the approved IMS debug properties, and distinguish a local policy block from missing EN-DC/network acceptance.
 - Restore the pre-force network masks, band selection, carrier NR modes, and system properties.
+- Validate the current Tensor firmware `cfg.db`, remap wildcard/PTCRB entries to its permissive profile, and stage the result as a removable Magisk module without spoofing country properties.
 - Save a field-test report in Downloads with visible tower IDs, bands/channels, signal metrics, CA, NR state, EN-DC, IMS transport, relevant CarrierConfig values, network masks, device build, and baseband.
 - Exclude phone number, IMSI, and ICCID from field-test reports and warn that tower IDs can reveal approximate location.
 - Show LTE+ only from confirmed carrier aggregation, 5G NSA/SA only from connected NR state, and VoWiFi only from confirmed IMS-over-IWLAN registration.

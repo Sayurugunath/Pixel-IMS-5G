@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 private const val GITHUB_PROFILE = "https://github.com/barrylk"
 private const val FACEBOOK_PROFILE = "https://www.facebook.com/nirmalafromslk/"
 private const val UPSTREAM_PROJECT = "https://github.com/kyujin-cho/pixel-volte-patch"
+private const val MODEM_PATCH_REFERENCE = "https://github.com/vchikalkin/Pixel-Modem-Fix"
 
 @Composable
 fun About() {
@@ -136,6 +137,11 @@ fun About() {
             label = "Pixel IMS / pixel-volte-patch",
             value = stringResource(R.string.upstream_credit),
             onClick = { UpdateManager.open(context, UPSTREAM_PROJECT) },
+        )
+        ClickablePropertyView(
+            label = "Tensor cfg.db research",
+            value = stringResource(R.string.modem_patch_credit),
+            onClick = { UpdateManager.open(context, MODEM_PATCH_REFERENCE) },
         )
         ClickablePropertyView(
             label = stringResource(R.string.license),

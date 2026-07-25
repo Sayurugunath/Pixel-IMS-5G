@@ -8,4 +8,7 @@ interface IPrivilegedService {
     String getAllowedSystemProperty(String name);
     boolean setAllowedSystemProperty(String name, String value);
     String getTelephonyDiagnosticSnapshot(String kind);
+    String getRegionalModemPatchStatus();
+    String installRegionalModemPatch();
+    String scheduleRegionalModemPatchRemoval();
 }

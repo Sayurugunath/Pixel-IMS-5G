@@ -4,9 +4,9 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current release: `0.12.10F`. The one-time uninstall/reinstall notice applies specifically
+Current development build: `0.12.11F`. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
-can update normally to `0.12.10F`.
+can update normally to later versions.
 
 ## Features
 
@@ -31,6 +31,7 @@ can update normally to `0.12.10F`.
 - Detect Dialog, SLT-MOBITEL, Airtel Lanka, and Hutch SIM identities and show conservative Sri Lankan band and activation guidance.
 - Apply a safe Sri Lankan/global compatibility profile without locking bands or claiming to bypass carrier provisioning.
 - Use a per-SIM Root Force Lab to snapshot, force, audit, verify, and restore every Android-side LTE/NR gate exposed on Android 17.
+- In Magisk Root mode, validate and stage a reversible systemless Tensor `cfg.db` wildcard/PTCRB compatibility mapping using the phone's own firmware database. The app refuses unknown schemas and never spoofs the SIM, PLMN, or Wi-Fi country.
 - Run a two-minute, 24-sample 5G field test and export a privacy-labelled report to `Downloads/Pixel IMS 5G` with NRARFCN/frequency, SS/CSI measurements, registration/reject state, callback events, PCC/SCC history, CarrierConfig gates, and sanitized root evidence.
 - Use the separate Monitoring section for TelephonyRegistry events, evidence-based 5G attach tracing, effective-vs-Android-default CarrierConfig differences, NR capability decoding, and root-only PCC/SCC physical channels.
 - In Root mode, capture sanitized TelephonyRegistry, phone-service, and radio-log evidence. Shizuku mode clearly marks phone-process and `READ_PRECISE_PHONE_STATE` internals as unavailable.
@@ -46,6 +47,12 @@ Changing radio modes can remove calls, SMS, or data. The app can change modem pr
 
 Root Force deliberately does not write modem NV/EFS. Those values are device- and baseband-specific; a mismatched Shannon NV profile can crash or disable the modem. The safe extension path is an exact-model, exact-baseband signed profile with backup and recovery—not a universal NV script.
 
+The regional modem compatibility tool is experimental and Magisk-only. It validates the
+stock database, patches a copy, performs SQLite integrity checks, and installs it as a
+removable systemless module for the next reboot. It cannot create n78 coverage, make an
+LTE cell advertise EN-DC, bypass subscriber/device entitlement, or force the network to
+accept an SCG addition.
+
 ## Developer and support
 
 Developed by **Nadeeja Nirmala**.
@@ -56,7 +63,7 @@ Developed by **Nadeeja Nirmala**.
 
 ## Origin and license
 
-Pixel IMS 5G is based on the original GPL project [kyujin-cho/pixel-volte-patch](https://github.com/kyujin-cho/pixel-volte-patch) and the work of its community contributors. This modified project remains licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+Pixel IMS 5G is based on the original GPL project [kyujin-cho/pixel-volte-patch](https://github.com/kyujin-cho/pixel-volte-patch) and the work of its community contributors. Tensor wildcard/PTCRB `cfg.db` mapping research is credited to [vchikalkin/Pixel-Modem-Fix](https://github.com/vchikalkin/Pixel-Modem-Fix) and [Displax/modem-fix](https://github.com/Displax/modem-fix). This app independently validates and patches the current firmware database and does not redistribute either project's database or binary tools. This modified project remains licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
 
 This is an unofficial community project and is not affiliated with Google or any mobile carrier.
 

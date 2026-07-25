@@ -71,6 +71,27 @@ object PrivilegeManager {
         }
     }
 
+    fun getRegionalModemPatchStatus(): RegionalModemPatchStatus =
+        rootRegionalPatchCall { it.getRegionalModemPatchStatus() }
+
+    fun installRegionalModemPatch(): RegionalModemPatchStatus =
+        rootRegionalPatchCall { it.installRegionalModemPatch() }
+
+    fun scheduleRegionalModemPatchRemoval(): RegionalModemPatchStatus =
+        rootRegionalPatchCall { it.scheduleRegionalModemPatchRemoval() }
+
+    private fun rootRegionalPatchCall(call: (IPrivilegedService) -> String): RegionalModemPatchStatus {
+        if (activeMode != PrivilegeMode.ROOT || !isRootReady()) {
+            return RegionalModemPatchStatus.unavailable("Root mode is required.")
+        }
+        return runCatching {
+            RegionalModemPatchStatus.fromJson(call(requireNotNull(rootBridge)))
+        }.getOrElse {
+            Log.w(TAG, "Regional modem patch operation failed", it)
+            RegionalModemPatchStatus.unavailable(it.message ?: "Root service operation failed.")
+        }
+    }
+
     fun connectRoot(context: Context, result: (Boolean, String?) -> Unit) {
         if (isRootReady()) {
             result(true, null)

@@ -217,6 +217,28 @@
     <string name="root_verdict_rejected">The cell advertises NR, but the modem is not attached. Coverage, SIM provisioning, modem policy, or network rejection may be responsible.</string>
     <string name="root_verdict_unknown">Android is not exposing enough modem state to prove why NR is not attached.</string>
     <string name="root_force_warning">Root Force snapshots the current state, removes band restrictions, enables NSA + SA in CarrierConfig, opens every readable allowed-network reason, enables IMS debug gates, and restarts IMS. It does not write modem NV/EFS. Device-specific NV profiles must match the exact Pixel model and baseband.</string>
+    <string name="regional_modem_patch">Regional modem compatibility (root)</string>
+    <string name="regional_patch_description">Experimental systemless Tensor modem patch. It copies this firmware’s own cfg.db, validates the SQLite schema and integrity, and maps only wildcard/PTCRB carrier entries to the firmware’s permissive profile. It does not fake the SIM country, registered PLMN, or Wi-Fi regulatory country.</string>
+    <string name="regional_patch_warning">Root and Magisk only. A reboot is required. Before applying a firmware update, remove this patch and reboot; after the update, validate and install a fresh copy. The installer refuses unknown layouts. This can open a local modem profile but cannot bypass Dialog authentication, tower EN-DC configuration, subscriber entitlement, or RF hardware limits.</string>
+    <string name="regional_patch_root_only">Root mode with Magisk is required. This operation is unavailable through Shizuku.</string>
+    <string name="regional_patch_confirm_title">Install regional modem patch?</string>
+    <string name="regional_patch_confirm_message">The app will validate and stage a systemless vendor carrier database overlay. The change becomes active after reboot. If service becomes unstable, return here, schedule removal, and reboot.</string>
+    <string name="regional_patch_remove_confirm_title">Remove regional modem patch?</string>
+    <string name="regional_patch_remove_confirm_message">Magisk will remove the systemless overlay during the next reboot and restore the stock firmware database.</string>
+    <string name="install_patch">Validate and install patch</string>
+    <string name="reinstall_patch">Revalidate for this firmware</string>
+    <string name="remove_patch">Remove patch on next reboot</string>
+    <string name="schedule_removal">Schedule removal</string>
+    <string name="patch_device">Tensor device</string>
+    <string name="patch_compatibility">Installer compatibility</string>
+    <string name="patch_compatible">Compatible</string>
+    <string name="patch_unavailable">Unavailable</string>
+    <string name="patch_status">Systemless module</string>
+    <string name="patch_installed">Installed</string>
+    <string name="patch_not_installed">Not installed</string>
+    <string name="patch_removal_pending">Removal pending reboot</string>
+    <string name="stock_database_hash">Stock cfg.db SHA-256</string>
+    <string name="patched_database_hash">Patched cfg.db SHA-256</string>
     <string name="signal_lost_title">Cellular service is unavailable</string>
     <string name="signal_lost_after_change">The last app action was “%1$s”. That restriction may have removed every usable network. Revert that exact change?</string>
     <string name="undo_last_change">Undo last change</string>
@@ -246,6 +268,7 @@
     <string name="download_install">Download and install update</string>
     <string name="credits">Credits &amp; license</string>
     <string name="upstream_credit">Based on the original GPL Pixel IMS project by kyujin-cho and its community contributors.</string>
+    <string name="modem_patch_credit">Wildcard/PTCRB Tensor cfg.db mapping research credited to the Pixel Modem Fix and Displax modem-fix projects. Pixel IMS 5G independently validates and patches the current firmware database.</string>
     <string name="license">Open-source license</string>
     <string name="unofficial_notice">Pixel IMS 5G is an unofficial community project. It is not affiliated with Google, mobile carriers, Facebook, or GitHub.</string>
 </resources>

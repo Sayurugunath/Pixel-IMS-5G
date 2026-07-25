@@ -293,6 +293,21 @@ object FieldTestReporter {
                 ROOT_DIAGNOSTIC_PROPERTIES.forEach { key ->
                     appendLine("  $key=${PrivilegeManager.getRootSystemProperty(key) ?: "unavailable"}")
                 }
+                val regionalPatch = PrivilegeManager.getRegionalModemPatchStatus()
+                appendLine("Regional modem compatibility patch:")
+                appendLine(
+                    "  device=${regionalPatch.device}; supported=${regionalPatch.supported}; " +
+                        "Magisk=${regionalPatch.magiskAvailable}; stock-db=${regionalPatch.sourceAvailable}",
+                )
+                appendLine(
+                    "  installed=${regionalPatch.installed}; removal-pending=${regionalPatch.removalPending}; " +
+                        "reboot-required=${regionalPatch.rebootRequired}",
+                )
+                appendLine(
+                    "  source-sha256=${regionalPatch.sourceSha256.ifBlank { "not recorded" }}; " +
+                        "patched-sha256=${regionalPatch.patchedSha256.ifBlank { "not recorded" }}",
+                )
+                appendLine("  status=${regionalPatch.message}")
             }
             appendLine()
             appendLine("TWO-MINUTE OBSERVATION")

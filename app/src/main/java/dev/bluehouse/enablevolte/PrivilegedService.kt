@@ -1,13 +1,18 @@
 package dev.bluehouse.enablevolte
 
 import android.content.Intent
+import android.database.sqlite.SQLiteDatabase
 import android.os.Binder
+import android.os.Build
 import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
 import android.os.ServiceManager
 import android.util.Log
 import com.topjohnwu.superuser.ipc.RootService
+import org.json.JSONObject
+import java.io.File
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -53,6 +58,32 @@ class PrivilegedService : RootService() {
                 "Diagnostic parser failed: ${it.javaClass.simpleName}"
             }
         }
+
+        override fun getRegionalModemPatchStatus(): String =
+            regionalPatchStatus(message = regionalPatchStatusMessage()).toString()
+
+        override fun installRegionalModemPatch(): String =
+            runCatching { installRegionalPatch() }
+                .getOrElse {
+                    Log.e(TAG, "Regional modem patch installation failed", it)
+                    regionalPatchStatus(message = it.message ?: "Patch installation failed.").toString()
+                }
+
+        override fun scheduleRegionalModemPatchRemoval(): String =
+            runCatching {
+                val moduleDir = File(REGIONAL_MODULE_DIR)
+                check(moduleDir.isDirectory) { "The regional modem patch is not installed." }
+                File(moduleDir, "remove").apply {
+                    check(createNewFile() || isFile) { "Unable to create the Magisk removal marker." }
+                }
+                regionalPatchStatus(
+                    rebootRequired = true,
+                    message = "Removal scheduled. Reboot to restore the stock modem carrier database.",
+                ).toString()
+            }.getOrElse {
+                Log.e(TAG, "Unable to schedule regional modem patch removal", it)
+                regionalPatchStatus(message = it.message ?: "Unable to schedule removal.").toString()
+            }
     }
 
     override fun onBind(intent: Intent): IBinder = binder
@@ -75,6 +106,237 @@ class PrivilegedService : RootService() {
                 CommandResult(process.waitFor(), output)
             }.getOrElse { CommandResult(-1, it.message.orEmpty()) }
 
+        private fun installRegionalPatch(): String {
+            val device = Build.DEVICE.lowercase()
+            check(device in TENSOR_DEVICES) {
+                "Unsupported device '$device'. This patch is limited to known Google Tensor Pixels."
+            }
+            check(findExecutable(MAGISK_CANDIDATES) != null) {
+                "Magisk was not detected. The modem database patch is unavailable with Shizuku."
+            }
+            val source = File(REGIONAL_SOURCE_DB)
+            check(source.isFile) { "The Tensor carrier database was not found at $REGIONAL_SOURCE_DB." }
+
+            val policy = findExecutable(MAGISK_POLICY_CANDIDATES)
+                ?: error("magiskpolicy was not found; the stock carrier database cannot be read safely.")
+            val policyResult = runCommand(
+                policy,
+                "--live",
+                "allow magisk vendor_fw_file file { getattr open read map }",
+            )
+            check(policyResult.exitCode == 0) {
+                "SELinux refused temporary read access to the stock carrier database."
+            }
+
+            val workDir = File(cacheDirectory(), "regional-modem-patch").apply {
+                deleteRecursively()
+                check(mkdirs()) { "Unable to create the patch staging directory." }
+            }
+            val stagedDatabase = File(workDir, "cfg.db")
+            source.copyTo(stagedDatabase, overwrite = true)
+            val sourceSha = stagedDatabase.sha256()
+
+            patchAndValidateCarrierDatabase(stagedDatabase)
+            val patchedSha = stagedDatabase.sha256()
+            check(sourceSha != patchedSha) {
+                "The database already uses the requested wildcard profile; no patch was staged."
+            }
+
+            val pendingModule = File("$REGIONAL_MODULE_DIR.new").apply {
+                deleteRecursively()
+                check(mkdirs()) { "Unable to create the Magisk module staging directory." }
+            }
+            File(pendingModule, "module.prop").writeText(
+                """
+                id=pixelims5g_region
+                name=Pixel IMS 5G Regional Modem Compatibility
+                version=1
+                versionCode=1
+                author=Nadeeja Nirmala
+                description=Systemless, reversible Tensor cfg.db wildcard/PTCRB compatibility mapping.
+                """.trimIndent() + "\n",
+            )
+            File(pendingModule, "service.sh").writeText(
+                """
+                #!/system/bin/sh
+                rm -f /data/adb/modules/pixelims5g_region/.pending_reboot
+                """.trimIndent() + "\n",
+            )
+            File(pendingModule, ".pending_reboot").writeText("")
+            File(pendingModule, "source.sha256").writeText("$sourceSha\n")
+            File(pendingModule, "patched.sha256").writeText("$patchedSha\n")
+            val targetDatabase = File(
+                pendingModule,
+                "system/vendor/firmware/carrierconfig/cfg.db",
+            ).apply {
+                check(parentFile?.mkdirs() == true || parentFile?.isDirectory == true) {
+                    "Unable to create the systemless vendor overlay."
+                }
+            }
+            stagedDatabase.copyTo(targetDatabase, overwrite = true)
+
+            check(
+                runCommand(
+                    "/system/bin/chcon",
+                    "-R",
+                    "u:object_r:magisk_file:s0",
+                    pendingModule.path,
+                ).exitCode == 0,
+            ) {
+                "Unable to assign the Magisk module SELinux label."
+            }
+            check(runCommand("/system/bin/chmod", "0755", File(pendingModule, "service.sh").path).exitCode == 0) {
+                "Unable to make the module boot service executable."
+            }
+            check(runCommand("/system/bin/chmod", "0644", targetDatabase.path).exitCode == 0) {
+                "Unable to set modem database permissions."
+            }
+            check(
+                runCommand(
+                    "/system/bin/chcon",
+                    "u:object_r:vendor_fw_file:s0",
+                    targetDatabase.path,
+                ).exitCode == 0,
+            ) {
+                "Unable to assign the vendor firmware SELinux label."
+            }
+
+            val moduleDir = File(REGIONAL_MODULE_DIR)
+            if (moduleDir.exists()) {
+                check(moduleDir.canonicalPath == REGIONAL_MODULE_DIR) { "Unsafe module target path." }
+                check(moduleDir.deleteRecursively()) { "Unable to replace the previous regional patch." }
+            }
+            check(pendingModule.renameTo(moduleDir)) { "Unable to activate the staged Magisk module." }
+            workDir.deleteRecursively()
+
+            return regionalPatchStatus(
+                rebootRequired = true,
+                message = "Validated systemless modem patch installed. Reboot to load it.",
+            ).toString()
+        }
+
+        private fun patchAndValidateCarrierDatabase(databaseFile: File) {
+            val database = SQLiteDatabase.openDatabase(
+                databaseFile.path,
+                null,
+                SQLiteDatabase.OPEN_READWRITE,
+            )
+            try {
+                check(database.rawQuery("PRAGMA integrity_check", null).use { it.moveToFirst() && it.getString(0) == "ok" }) {
+                    "The stock carrier database failed SQLite integrity checking."
+                }
+                val tableNames = database.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('confnames','confmap')",
+                    null,
+                ).use { cursor ->
+                    buildSet {
+                        while (cursor.moveToNext()) add(cursor.getString(0))
+                    }
+                }
+                check(tableNames == setOf("confnames", "confmap")) {
+                    "Unsupported carrier database schema: required tables are missing."
+                }
+                val profileExists = database.rawQuery(
+                    "SELECT COUNT(*) FROM confmap WHERE carrier_id=(" +
+                        "SELECT carrier_id FROM confnames WHERE name='it_iliad' LIMIT 1)",
+                    null,
+                ).use { it.moveToFirst() && it.getInt(0) == 1 }
+                check(profileExists) {
+                    "This firmware has no validated permissive Tensor carrier profile (it_iliad)."
+                }
+
+                database.beginTransaction()
+                try {
+                    val profile = "(SELECT confman FROM confmap WHERE carrier_id=(" +
+                        "SELECT carrier_id FROM confnames WHERE name='it_iliad' LIMIT 1))"
+                    database.execSQL(
+                        "UPDATE confmap SET confman=$profile WHERE carrier_id IN (0,20001,20005)",
+                    )
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO confmap (carrier_id,confman) VALUES (20001,$profile)",
+                    )
+                    database.execSQL(
+                        "INSERT OR IGNORE INTO confmap (carrier_id,confman) VALUES (20005,$profile)",
+                    )
+                    val mapped = database.rawQuery(
+                        "SELECT COUNT(*) FROM confmap WHERE carrier_id IN (0,20001,20005) " +
+                            "AND confman=$profile",
+                        null,
+                    ).use { it.moveToFirst() && it.getInt(0) == 3 }
+                    check(mapped) { "The wildcard/PTCRB carrier mappings were not retained." }
+                    database.setTransactionSuccessful()
+                } finally {
+                    database.endTransaction()
+                }
+                check(database.rawQuery("PRAGMA integrity_check", null).use { it.moveToFirst() && it.getString(0) == "ok" }) {
+                    "The patched carrier database failed SQLite integrity checking."
+                }
+            } finally {
+                database.close()
+            }
+        }
+
+        private fun regionalPatchStatus(
+            rebootRequired: Boolean? = null,
+            message: String,
+        ): JSONObject {
+            val device = Build.DEVICE.lowercase()
+            val module = File(REGIONAL_MODULE_DIR)
+            val database = File(module, "system/vendor/firmware/carrierconfig/cfg.db")
+            val removalPending = File(module, "remove").isFile
+            val pendingReboot = File(module, ".pending_reboot").isFile
+            return JSONObject()
+                .put("supported", device in TENSOR_DEVICES)
+                .put("magiskAvailable", findExecutable(MAGISK_CANDIDATES) != null)
+                .put("sourceAvailable", File(REGIONAL_SOURCE_DB).isFile)
+                .put("installed", database.isFile)
+                .put("removalPending", removalPending)
+                .put("rebootRequired", rebootRequired ?: (pendingReboot || removalPending))
+                .put("device", device)
+                .put("sourceSha256", File(module, "source.sha256").readSmallText())
+                .put("patchedSha256", File(module, "patched.sha256").readSmallText())
+                .put("message", message)
+        }
+
+        private fun regionalPatchStatusMessage(): String {
+            val device = Build.DEVICE.lowercase()
+            val module = File(REGIONAL_MODULE_DIR)
+            return when {
+                device !in TENSOR_DEVICES -> "This device is not in the validated Tensor Pixel list."
+                findExecutable(MAGISK_CANDIDATES) == null -> "Magisk is required; Shizuku cannot overlay vendor firmware."
+                !File(REGIONAL_SOURCE_DB).isFile -> "The Tensor carrier database was not found on this firmware."
+                File(module, "remove").isFile -> "Removal is scheduled. Reboot to restore the stock modem database."
+                File(module, ".pending_reboot").isFile -> "Patch installed. Reboot is required before it becomes active."
+                File(module, "system/vendor/firmware/carrierconfig/cfg.db").isFile ->
+                    "The systemless regional modem compatibility patch is installed."
+                else -> "Ready for schema validation and systemless installation."
+            }
+        }
+
+        private fun cacheDirectory(): File =
+            File("/data/local/tmp/pixelims5g").apply {
+                check(mkdirs() || isDirectory) { "Unable to access the root staging directory." }
+            }
+
+        private fun findExecutable(paths: List<String>): String? =
+            paths.firstOrNull { File(it).canExecute() }
+
+        private fun File.readSmallText(): String =
+            runCatching { if (isFile && length() < 512) readText().trim() else "" }.getOrDefault("")
+
+        private fun File.sha256(): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            inputStream().buffered().use { input ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            return digest.digest().joinToString("") { "%02x".format(it) }
+        }
+
         private val ALLOWED_SERVICES = setOf(
             "carrier_config",
             "phone",
@@ -94,6 +356,26 @@ class PrivilegedService : RootService() {
             "persist.radio.is_vonr_enabled_1",
         )
         private val ALLOWED_PROPERTY_VALUES = setOf("", "0", "1", "false", "true")
+
+        private const val REGIONAL_SOURCE_DB = "/vendor/firmware/carrierconfig/cfg.db"
+        private const val REGIONAL_MODULE_DIR = "/data/adb/modules/pixelims5g_region"
+        private val MAGISK_CANDIDATES = listOf(
+            "/system_ext/bin/magisk",
+            "/sbin/magisk",
+            "/data/adb/magisk/magisk",
+        )
+        private val MAGISK_POLICY_CANDIDATES = listOf(
+            "/system_ext/bin/magiskpolicy",
+            "/sbin/magiskpolicy",
+            "/data/adb/magisk/magiskpolicy",
+        )
+        private val TENSOR_DEVICES = setOf(
+            "oriole", "raven", "bluejay",
+            "panther", "cheetah", "lynx", "tangorpro", "felix",
+            "shiba", "husky",
+            "tokay", "caiman", "komodo", "comet",
+            "mustang", "blazer", "rango",
+        )
 
         private val DIAGNOSTIC_COMMANDS = mapOf(
             "registry" to arrayOf("/system/bin/dumpsys", "telephony.registry"),
