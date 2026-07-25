@@ -110,7 +110,7 @@
     <string name="network_monitor">Network monitor</string>
     <string name="monitor_error">Monitor unavailable</string>
     <string name="field_test">5G field test</string>
-    <string name="field_test_description">Capture 24 timestamped snapshots over two minutes while you move through a known 5G area. The report records NRARFCN and calculated NR frequency, SS/CSI signal metrics, registration and reject state, live callbacks, PCC/SCC changes, CarrierConfig, Android network gates, and sanitized root radio evidence.</string>
+    <string name="field_test_description">Capture 24 timestamped snapshots over two minutes while you move through a known 5G area. The report records NRARFCN and calculated NR frequency, SS/CSI metrics, registration and reject state, callbacks, PCC/SCC changes, Android gates, regional-patch hashes, modem carrier-profile IDs, baseband/build-carrier properties, and sanitized start/end CarrierConfig, phone-process, registry, physical-channel, and radio-log evidence.</string>
     <string name="start_field_test">Start detailed 2-minute field test</string>
     <string name="field_test_progress">Testing… sample %1$d of %2$d</string>
     <string name="field_test_saved">Saved in Downloads/Pixel IMS 5G/%1$s</string>

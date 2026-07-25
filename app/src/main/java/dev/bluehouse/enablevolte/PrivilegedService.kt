@@ -48,10 +48,11 @@ class PrivilegedService : RootService() {
             val result = runCommand(*command)
             if (result.exitCode != 0) return "Diagnostic source failed (${result.exitCode})"
             return runCatching {
-                if (kind == "physical") {
-                    extractPhysicalChannels(result.output)
-                } else {
-                    sanitizeDiagnostic(result.output)
+                when (kind) {
+                    "physical" -> extractPhysicalChannels(result.output)
+                    "properties" -> extractRadioProperties(result.output)
+                    "carrier" -> extractCarrierConfig(result.output)
+                    else -> sanitizeDiagnostic(result.output)
                 }
             }.getOrElse {
                 Log.w(TAG, "Diagnostic parser failed for $kind", it)
@@ -381,6 +382,8 @@ class PrivilegedService : RootService() {
             "registry" to arrayOf("/system/bin/dumpsys", "telephony.registry"),
             "physical" to arrayOf("/system/bin/dumpsys", "telephony.registry"),
             "phone" to arrayOf("/system/bin/dumpsys", "activity", "service", "com.android.phone"),
+            "carrier" to arrayOf("/system/bin/dumpsys", "carrier_config"),
+            "properties" to arrayOf("/system/bin/getprop"),
             "radio" to arrayOf("/system/bin/logcat", "-b", "radio", "-d", "-v", "threadtime", "-t", "1200"),
         )
         private val DIAGNOSTIC_TERMS = Regex(
@@ -395,6 +398,17 @@ class PrivilegedService : RootService() {
         )
         private val IPV4 = Regex("\\b(?:\\d{1,3}\\.){3}\\d{1,3}\\b")
         private val IPV6 = Regex("\\b(?:[0-9a-fA-F]{1,4}:){2,}[0-9a-fA-F:]{0,39}\\b")
+        private val RADIO_PROPERTY = Regex(
+            "(?i)^\\[(?:gsm\\.(?:operator|sim\\.operator)\\.(?:numeric|iso-country)|" +
+                "gsm\\.version\\.baseband|persist\\.(?:radio|vendor\\.radio|vendor\\.ril|vendor\\.modem)\\.|" +
+                "ro\\.(?:baseband|build\\.expect\\.baseband|carrier|vendor\\.config\\.build_carrier)|" +
+                "vendor\\.ril\\.(?:modem\\.cfg|sim)\\.carrier_id|vendor\\.radio\\.|ril\\.)",
+        )
+        private val CARRIER_CONFIG_DIAGNOSTIC = Regex(
+            "(?i)5g|\\bnr[_ -]|endc|en-dc|dcnr|vonr|volte|wfc|wifi.?call|ims|" +
+                "carrier.?id|subscription|sub.?id|config.?package|lte.?plus|lte_ca|" +
+                "advanced.?band|unmetered.?nr|rrc",
+        )
 
         /**
          * Root radio output can contain subscriber identifiers. Return only relevant lines and
@@ -431,6 +445,36 @@ class PrivilegedService : RootService() {
                     )
                 }
                 .take(180_000)
+
+        private fun extractRadioProperties(raw: String): String =
+            raw.lineSequence()
+                .map(String::trim)
+                .filter(RADIO_PROPERTY::containsMatchIn)
+                .map { line ->
+                    SENSITIVE_FIELD.replace(LONG_IDENTIFIER.replace(line, "[redacted-id]")) { match ->
+                        "${match.groupValues[1]}=[redacted]"
+                    }
+                }
+                .distinct()
+                .sorted()
+                .take(180)
+                .joinToString("\n")
+                .ifBlank { "No matching modem/carrier properties were exposed." }
+
+        private fun extractCarrierConfig(raw: String): String =
+            raw.lineSequence()
+                .map(String::trim)
+                .filter { it.isNotBlank() && CARRIER_CONFIG_DIAGNOSTIC.containsMatchIn(it) }
+                .map { line ->
+                    SENSITIVE_FIELD.replace(LONG_IDENTIFIER.replace(line, "[redacted-id]")) { match ->
+                        "${match.groupValues[1]}=[redacted]"
+                    }
+                }
+                .distinct()
+                .take(500)
+                .joinToString("\n")
+                .take(180_000)
+                .ifBlank { "No matching active CarrierConfig evidence was exposed." }
 
         private fun extractPhysicalChannels(raw: String): String {
             val entries = Regex("\\{mConnectionStatus=[^}]+\\}")

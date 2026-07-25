@@ -32,7 +32,7 @@ data class FieldTestResult(
 object FieldTestReporter {
     const val SAMPLE_COUNT = 24
     private const val SAMPLE_INTERVAL_MS = 5_000L
-    private const val ROOT_SNAPSHOT_LIMIT = 16_000
+    private const val ROOT_SNAPSHOT_LIMIT = 48_000
 
     private data class TimedSample(
         val capturedAt: String,
@@ -94,9 +94,9 @@ object FieldTestReporter {
         }.isSuccess
         val rootAtStart = withContext(Dispatchers.IO) {
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
-                PrivilegeManager.getRootTelephonyDiagnostic("phone")
+                captureRootEvidence()
             } else {
-                null
+                emptyMap()
             }
         }
         try {
@@ -138,10 +138,7 @@ object FieldTestReporter {
 
         val rootAtEnd = withContext(Dispatchers.IO) {
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
-                mapOf(
-                    "phone-final" to PrivilegeManager.getRootTelephonyDiagnostic("phone"),
-                    "radio-final" to PrivilegeManager.getRootTelephonyDiagnostic("radio"),
-                )
+                captureRootEvidence()
             } else {
                 emptyMap()
             }
@@ -220,7 +217,7 @@ object FieldTestReporter {
         samples: List<TimedSample>,
         eventLog: List<String>,
         callbackRegistered: Boolean,
-        rootAtStart: String?,
+        rootAtStart: Map<String, String?>,
         rootAtEnd: Map<String, String?>,
     ): String {
         val radios = samples.map { it.radio }
@@ -406,10 +403,16 @@ object FieldTestReporter {
             appendLine()
             appendLine("ROOT-ONLY TELEPHONY EVIDENCE")
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
-                appendLine("[phone-start]")
-                appendLine(rootAtStart?.ifBlank { "No matching lines." } ?: "Unavailable")
+                appendLine(
+                    "Start and end radio-log snapshots may overlap because the app intentionally does not clear " +
+                        "Android's radio buffer. Compare timestamps with the two-minute sample timeline.",
+                )
+                rootAtStart.forEach { (source, evidence) ->
+                    appendLine("[$source-start]")
+                    appendLine(evidence?.ifBlank { "No matching lines." } ?: "Unavailable")
+                }
                 rootAtEnd.forEach { (source, evidence) ->
-                    appendLine("[$source]")
+                    appendLine("[$source-end]")
                     appendLine(evidence?.ifBlank { "No matching NR/EN-DC/SCG lines were present." } ?: "Unavailable")
                 }
             } else {
@@ -437,6 +440,11 @@ object FieldTestReporter {
         else -> value.toString()
     }
 
+    private fun captureRootEvidence(): Map<String, String?> =
+        ROOT_EVIDENCE_SOURCES.associateWith { source ->
+            PrivilegeManager.getRootTelephonyDiagnostic(source)?.take(ROOT_SNAPSHOT_LIMIT)
+        }
+
     private val RELEVANT_CARRIER_CONFIG_KEYS = listOf(
         CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
         CarrierConfigManager.KEY_VONR_ENABLED_BOOL,
@@ -461,6 +469,15 @@ object FieldTestReporter {
         "persist.dbg.vt_avail_ovr",
         "persist.radio.is_vonr_enabled_0",
         "persist.radio.is_vonr_enabled_1",
+    )
+
+    private val ROOT_EVIDENCE_SOURCES = listOf(
+        "properties",
+        "carrier",
+        "phone",
+        "registry",
+        "physical",
+        "radio",
     )
 
     private val REPORT_SENSITIVE_FIELD = Regex(

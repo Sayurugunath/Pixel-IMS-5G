@@ -4,7 +4,7 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current development build: `0.12.11F`. The one-time uninstall/reinstall notice applies specifically
+Current release: `1.0.0`. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
 
