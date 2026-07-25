@@ -12,11 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.SignalCellularAlt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
@@ -52,10 +53,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import dev.bluehouse.enablevolte.components.OnLifecycleEvent
 import dev.bluehouse.enablevolte.components.GlassBackdrop
@@ -64,6 +63,7 @@ import dev.bluehouse.enablevolte.pages.Bands
 import dev.bluehouse.enablevolte.pages.DumpedConfig
 import dev.bluehouse.enablevolte.pages.Editor
 import dev.bluehouse.enablevolte.pages.Home
+import dev.bluehouse.enablevolte.pages.MonitoringHub
 import dev.bluehouse.enablevolte.pages.About
 import dev.bluehouse.enablevolte.ui.theme.EnableVoLTETheme
 import org.lsposed.hiddenapibypass.HiddenApiBypass
@@ -110,72 +110,55 @@ fun PixelIMSApp() {
 
     var subscriptions by rememberSaveable { mutableStateOf(listOf<SubscriptionInfo>()) }
     var showRecoveryDialog by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    var navBuilder by remember {
-        mutableStateOf<NavGraphBuilder.() -> Unit>({
-            composable("home", context.resources.getString(R.string.home)) {
-                Home(navController)
-            }
-            composable("home/about", context.resources.getString(R.string.about)) {
-                About()
-            }
-        })
+    var selectedPrivilegeMode by rememberSaveable {
+        mutableStateOf(PrivilegeManager.selectedMode(context)?.name)
     }
-
-    fun generateInitialNavBuilder(): (NavGraphBuilder.() -> Unit) =
-        {
-            composable("home", "Home") {
-                Home(navController)
-            }
-        }
-
-    fun generateNavBuilder(): (NavGraphBuilder.() -> Unit) =
-        {
-            composable("home", context.resources.getString(R.string.home)) {
-                Home(navController)
-            }
-            composable("home/about", context.resources.getString(R.string.about)) {
-                About()
-            }
-            for (subscription in subscriptions) {
-                navigation(startDestination = "config${subscription.subscriptionId}", route = "config${subscription.subscriptionId}root") {
-                    composable("config${subscription.subscriptionId}", context.resources.getString(R.string.sim_config)) {
-                        Config(navController, subscription.subscriptionId)
-                    }
-                    composable("config${subscription.subscriptionId}/dump", context.resources.getString(R.string.config_dump_viewer)) {
-                        DumpedConfig(context, subscription.subscriptionId)
-                    }
-                    composable("config${subscription.subscriptionId}/edit", context.resources.getString(R.string.expert_mode)) {
-                        Editor(subscription.subscriptionId)
-                    }
-                }
-                composable("bands${subscription.subscriptionId}", context.resources.getString(R.string.bands)) {
-                    Bands(subscription.subscriptionId)
-                }
-            }
-        }
+    var privilegeError by rememberSaveable { mutableStateOf<String?>(null) }
+    var privilegeConnecting by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     fun loadApplication() {
+        val mode = PrivilegeManager.selectedMode(context) ?: return
+        PrivilegeManager.activate(context, mode)
+        if (mode == PrivilegeMode.ROOT && !PrivilegeManager.isRootReady()) {
+            if (privilegeConnecting) return
+            privilegeConnecting = true
+            PrivilegeManager.connectRoot(context) { ready, error ->
+                context.mainExecutor.execute {
+                    privilegeConnecting = false
+                    privilegeError = error
+                    if (ready) {
+                        runCatching {
+                            subscriptions = carrierModer.subscriptions
+                        }.onFailure { privilegeError = it.message ?: "Unable to read telephony services as root" }
+                    }
+                }
+            }
+            return
+        }
+        if (mode == PrivilegeMode.ROOT) {
+            runCatching {
+                subscriptions = carrierModer.subscriptions
+            }.onFailure { privilegeError = it.message ?: "Unable to read telephony services as root" }
+            return
+        }
         val shizukuStatus = checkShizukuPermission(0)
         try {
             when (shizukuStatus) {
                 ShizukuStatus.GRANTED -> {
                     Log.d(dev.bluehouse.enablevolte.pages.TAG, "Shizuku granted")
                     subscriptions = carrierModer.subscriptions
-                    navBuilder = generateNavBuilder()
                 }
                 ShizukuStatus.NOT_GRANTED -> {
                     Shizuku.addRequestPermissionResultListener { _, grantResult ->
                         if (grantResult == PackageManager.PERMISSION_GRANTED) {
                             Log.d(dev.bluehouse.enablevolte.pages.TAG, "Shizuku granted")
                             subscriptions = carrierModer.subscriptions
-                            navBuilder = generateNavBuilder()
                         }
                     }
                 }
                 else -> {
                     subscriptions = listOf()
-                    navBuilder = generateInitialNavBuilder()
                 }
             }
         } catch (_: IllegalStateException) {
@@ -186,6 +169,41 @@ fun PixelIMSApp() {
         if (event == Lifecycle.Event.ON_CREATE) {
             loadApplication()
         }
+    }
+    if (selectedPrivilegeMode == null || privilegeError != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.choose_access_mode)) },
+            text = {
+                Text(
+                    privilegeError ?: stringResource(R.string.choose_access_mode_message),
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !privilegeConnecting,
+                    onClick = {
+                        privilegeError = null
+                        selectedPrivilegeMode = PrivilegeMode.ROOT.name
+                        PrivilegeManager.activate(context, PrivilegeMode.ROOT)
+                        loadApplication()
+                    },
+                ) {
+                    Text(if (privilegeConnecting) stringResource(R.string.connecting) else stringResource(R.string.use_root))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    enabled = !privilegeConnecting,
+                    onClick = {
+                        privilegeError = null
+                        selectedPrivilegeMode = PrivilegeMode.SHIZUKU.name
+                        PrivilegeManager.activate(context, PrivilegeMode.SHIZUKU)
+                        loadApplication()
+                    },
+                ) { Text(stringResource(R.string.use_shizuku)) }
+            },
+        )
     }
     if (showRecoveryDialog) {
         AlertDialog(
@@ -234,7 +252,7 @@ fun PixelIMSApp() {
                             onClick = { showRecoveryDialog = true },
                             colors = IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
-                            Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.restore_and_reboot))
+                            Icon(Icons.Filled.PowerSettingsNew, contentDescription = stringResource(R.string.restore_and_reboot))
                         }
                     }
                     if (currentBackStackEntry?.destination?.route != "home/about") {
@@ -263,29 +281,18 @@ fun PixelIMSApp() {
             )
         },
         bottomBar = {
-            if (currentBackStackEntry?.destination?.depth?.let { it == 1 } == true) {
+            val currentRoute = currentBackStackEntry?.destination?.route
+            if (currentRoute in setOf("home", "monitor", "config/{subId}", "bands/{subId}")) {
                 NavigationBar(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(32.dp)),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
                     tonalElevation = 8.dp,
                 ) {
                     val currentDestination = currentBackStackEntry?.destination
-                    val items =
-                        arrayListOf(
-                            Screen("home", stringResource(R.string.home), Icons.Filled.Home),
-                        )
-                    for (subscription in subscriptions) {
-                        items.add(
-                            Screen("config${subscription.subscriptionId}", subscription.uniqueName, Icons.Filled.Settings),
-                        )
-                        items.add(
-                            Screen(
-                                "bands${subscription.subscriptionId}",
-                                "${subscription.uniqueName} ${stringResource(R.string.bands)}",
-                                Icons.AutoMirrored.Filled.List,
-                            ),
-                        )
-                    }
+                    val items = arrayListOf(
+                        Screen("home", "Controls", Icons.Filled.Home),
+                        Screen("monitor", stringResource(R.string.network_monitor), Icons.Filled.SignalCellularAlt),
+                    )
 
                     items.forEach { screen ->
                         NavigationBarItem(
@@ -293,7 +300,15 @@ fun PixelIMSApp() {
                             label = {
                                 Text(screen.title)
                             },
-                            selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                            selected = when {
+                                screen.route.startsWith("config/") ->
+                                    currentRoute in setOf("config/{subId}", "bands/{subId}") &&
+                                        currentBackStackEntry?.arguments?.getString("subId") == screen.route.substringAfter("/")
+                                screen.route.startsWith("bands/") ->
+                                    currentRoute == "bands/{subId}" &&
+                                        currentBackStackEntry?.arguments?.getString("subId") == screen.route.substringAfter("/")
+                                else -> currentDestination?.hierarchy?.any { it.route == screen.route } == true
+                            },
                             onClick = {
                                 navController.navigate(screen.route) {
                                     // Pop up to the start destination of the graph to
@@ -315,7 +330,29 @@ fun PixelIMSApp() {
             }
         },
     ) { innerPadding ->
-        NavHost(navController, startDestination = "home", Modifier.padding(innerPadding), builder = navBuilder)
+        NavHost(navController, startDestination = "home", Modifier.padding(innerPadding)) {
+            composable("home", context.resources.getString(R.string.home)) {
+                Home(navController)
+            }
+            composable("home/about", context.resources.getString(R.string.about)) {
+                About()
+            }
+            composable("monitor", context.resources.getString(R.string.network_monitor)) {
+                MonitoringHub(subscriptions)
+            }
+            composable("config/{subId}", context.resources.getString(R.string.sim_config)) { entry ->
+                entry.arguments?.getString("subId")?.toIntOrNull()?.let { Config(navController, it) }
+            }
+            composable("config/{subId}/dump", context.resources.getString(R.string.config_dump_viewer)) { entry ->
+                entry.arguments?.getString("subId")?.toIntOrNull()?.let { DumpedConfig(context, it) }
+            }
+            composable("config/{subId}/edit", context.resources.getString(R.string.expert_mode)) { entry ->
+                entry.arguments?.getString("subId")?.toIntOrNull()?.let { Editor(it) }
+            }
+            composable("bands/{subId}", context.resources.getString(R.string.bands)) { entry ->
+                entry.arguments?.getString("subId")?.toIntOrNull()?.let { Bands(it, navController) }
+            }
+        }
     }
 }
 

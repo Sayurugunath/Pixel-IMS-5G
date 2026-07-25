@@ -1,5 +1,6 @@
 package dev.bluehouse.enablevolte.pages
 
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,6 +30,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import dev.bluehouse.enablevolte.BuildConfig
 import dev.bluehouse.enablevolte.R
+import dev.bluehouse.enablevolte.PrivilegeManager
 import dev.bluehouse.enablevolte.ReleaseInfo
 import dev.bluehouse.enablevolte.UpdateManager
 import dev.bluehouse.enablevolte.components.ClickablePropertyView
@@ -72,6 +74,23 @@ fun About() {
         modifier = Modifier.padding(horizontal = 16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        HeaderText(stringResource(R.string.privileged_access))
+        ClickablePropertyView(
+            label = stringResource(R.string.current_access_mode),
+            value = PrivilegeManager.selectedMode(context)?.name?.lowercase()?.replaceFirstChar { it.uppercase() }
+                ?: stringResource(R.string.not_selected),
+        )
+        OutlinedButton(
+            onClick = {
+                PrivilegeManager.clearMode(context)
+                (context as? Activity)?.recreate()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.Settings, contentDescription = null)
+            Text(" ${stringResource(R.string.change_access_mode)}")
+        }
+
         HeaderText(stringResource(R.string.developer))
         ClickablePropertyView(
             label = stringResource(R.string.developed_by),

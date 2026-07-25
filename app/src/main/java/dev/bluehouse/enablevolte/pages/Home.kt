@@ -27,6 +27,8 @@ import androidx.navigation.NavController
 import dev.bluehouse.enablevolte.BuildConfig
 import dev.bluehouse.enablevolte.CarrierModer
 import dev.bluehouse.enablevolte.R
+import dev.bluehouse.enablevolte.PrivilegeManager
+import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.ShizukuStatus
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.checkShizukuPermission
@@ -37,6 +39,7 @@ import dev.bluehouse.enablevolte.components.StringPropertyView
 import dev.bluehouse.enablevolte.uniqueName
 import rikka.shizuku.Shizuku
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -71,6 +74,18 @@ fun Home(navController: NavController) {
     }
 
     LaunchedEffect(Unit) {
+        if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+            repeat(20) {
+                if (PrivilegeManager.isRootReady()) {
+                    shizukuEnabled = true
+                    shizukuGranted = true
+                    loadFlags()
+                    return@LaunchedEffect
+                }
+                delay(250)
+            }
+            return@LaunchedEffect
+        }
         try {
             when (checkShizukuPermission(0)) {
                 ShizukuStatus.GRANTED -> {
@@ -98,8 +113,8 @@ fun Home(navController: NavController) {
         HeaderText(text = stringResource(R.string.version))
         StringPropertyView(label = BuildConfig.VERSION_NAME, value = stringResource(R.string.app_name))
         HeaderText(text = stringResource(R.string.permissions_capabilities))
-        BooleanPropertyView(label = stringResource(R.string.shizuku_service_running), toggled = shizukuEnabled)
-        BooleanPropertyView(label = stringResource(R.string.shizuku_permission_granted), toggled = shizukuGranted)
+        BooleanPropertyView(label = stringResource(R.string.privileged_service_running), toggled = shizukuEnabled)
+        BooleanPropertyView(label = stringResource(R.string.privileged_access_granted), toggled = shizukuGranted)
         BooleanPropertyView(label = stringResource(R.string.sim_detected), toggled = subscriptions.isNotEmpty())
         BooleanPropertyView(label = stringResource(R.string.volte_supported_by_device), toggled = deviceIMSEnabled)
 

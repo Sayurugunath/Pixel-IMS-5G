@@ -20,7 +20,9 @@ class BrokerInstrumentation : Instrumentation() {
         arguments: Bundle,
     ) {
         Log.i(TAG, "applyConfig")
-        val am = IActivityManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)))
+        val am = IActivityManager.Stub.asInterface(
+            ShizukuBinderWrapper(SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)),
+        )
         am.startDelegateShellPermissionIdentity(Os.getuid(), null)
         try {
             val configurationManager = this.context.getSystemService(CarrierConfigManager::class.java)
@@ -44,7 +46,9 @@ class BrokerInstrumentation : Instrumentation() {
     @SuppressLint("MissingPermission")
     private fun clearConfig(subId: Int) {
         Log.i(TAG, "clearConfig")
-        val am = IActivityManager.Stub.asInterface(ShizukuBinderWrapper(SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)))
+        val am = IActivityManager.Stub.asInterface(
+            ShizukuBinderWrapper(SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE)),
+        )
         am.startDelegateShellPermissionIdentity(Os.getuid(), null)
         try {
             val configurationManager = this.context.getSystemService(CarrierConfigManager::class.java)

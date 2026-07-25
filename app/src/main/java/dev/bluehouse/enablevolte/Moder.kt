@@ -1,5 +1,6 @@
 package dev.bluehouse.enablevolte
 
+import android.annotation.SuppressLint
 import android.app.IActivityManager
 import android.app.UiAutomationConnection
 import android.content.ComponentName
@@ -22,6 +23,7 @@ import android.telephony.CellIdentityNr
 import android.telephony.CellInfoLte
 import android.telephony.CellInfoNr
 import android.telephony.CellInfo
+import android.telephony.CellSignalStrengthNr
 import android.telephony.ICellInfoCallback
 import android.telephony.NetworkRegistrationInfo
 import android.telephony.RadioAccessSpecifier
@@ -35,7 +37,6 @@ import com.android.internal.telephony.ICarrierConfigLoader
 import com.android.internal.telephony.IPhoneSubInfo
 import com.android.internal.telephony.ISub
 import com.android.internal.telephony.ITelephony
-import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -64,7 +65,8 @@ open class Moder {
     protected val carrierConfigLoader: ICarrierConfigLoader
         get() =
             ICarrierConfigLoader.Stub.asInterface(
-                ShizukuBinderWrapper(
+                PrivilegeManager.wrapService(
+                    Context.CARRIER_CONFIG_SERVICE,
                     try {
                         TelephonyFrameworkInitializer
                             .getTelephonyServiceManager()
@@ -79,7 +81,8 @@ open class Moder {
     protected val telephony: ITelephony
         get() =
             ITelephony.Stub.asInterface(
-                ShizukuBinderWrapper(
+                PrivilegeManager.wrapService(
+                    Context.TELEPHONY_SERVICE,
                     try {
                         TelephonyFrameworkInitializer
                             .getTelephonyServiceManager()
@@ -94,7 +97,8 @@ open class Moder {
     protected val phoneSubInfo: IPhoneSubInfo
         get() =
             IPhoneSubInfo.Stub.asInterface(
-                ShizukuBinderWrapper(
+                PrivilegeManager.wrapService(
+                    "iphonesubinfo",
                     try {
                         TelephonyFrameworkInitializer
                             .getTelephonyServiceManager()
@@ -109,7 +113,8 @@ open class Moder {
     protected val sub: ISub
         get() =
             ISub.Stub.asInterface(
-                ShizukuBinderWrapper(
+                PrivilegeManager.wrapService(
+                    "isub",
                     try {
                         TelephonyFrameworkInitializer
                             .getTelephonyServiceManager()
@@ -183,7 +188,10 @@ class CarrierModer(
         context.getSharedPreferences("pixel_ims_5g_network_modes", Context.MODE_PRIVATE).edit().clear().commit()
         context.getSharedPreferences("github_updater", Context.MODE_PRIVATE).edit().clear().apply()
         val power = IPowerManager.Stub.asInterface(
-            ShizukuBinderWrapper(ServiceManager.getService(Context.POWER_SERVICE)),
+            PrivilegeManager.wrapService(
+                Context.POWER_SERVICE,
+                ServiceManager.getService(Context.POWER_SERVICE),
+            ),
         )
         power.reboot(false, "Pixel IMS 5G restore", false)
     }
@@ -212,11 +220,30 @@ class SubscriptionModer(
         private const val LAST_CA_PREFIX = "last_tensor_ca_"
         private const val EASY_MODE_PREFIX = "easy_mode_"
         private const val ORIGINAL_CA_PREFIX = "original_tensor_ca_"
+        private const val ROOT_FORCE_ACTIVE_PREFIX = "root_force_active_"
+        private const val ROOT_FORCE_MASK_PREFIX = "root_force_mask_"
+        private const val ROOT_FORCE_NR_AVAIL_PREFIX = "root_force_nr_availability_"
+        private const val ROOT_FORCE_LTE_BANDS_PREFIX = "root_force_lte_bands_"
+        private const val ROOT_FORCE_NR_BANDS_PREFIX = "root_force_nr_bands_"
+        private const val ROOT_FORCE_PROPERTY_PREFIX = "root_force_property_"
         private const val OEM_RIL_SERVICE = "telephony.oem.oemrilhook"
         private const val OEM_RIL_DESCRIPTOR = "com.samsung.slsi.telephony.oem.oemrilhook.IOemRilHook"
         private const val OEM_RIL_GET_RADIO_NODE = 1
         private const val OEM_RIL_SET_RADIO_NODE_INT = 2
         private const val TENSOR_LTE_CA_ENABLEMENT_NODE = 12300
+        private val ROOT_FORCE_REASONS = listOf(
+            0 to "User",
+            1 to "Power",
+            2 to "Carrier",
+            3 to "2G control",
+            4 to "Test",
+        )
+        private val ROOT_FORCE_PROPERTIES = listOf(
+            "persist.dbg.ims_volte_enable" to "1",
+            "persist.dbg.volte_avail_ovr" to "1",
+            "persist.dbg.wfc_avail_ovr" to "1",
+            "persist.dbg.vt_avail_ovr" to "1",
+        )
     }
 
     enum class ImsIssue {
@@ -236,6 +263,40 @@ class SubscriptionModer(
     data class EasyModeResult(
         val applied: Boolean,
         val caEnabled: Boolean?,
+    )
+
+    data class NetworkGate(
+        val reason: Int,
+        val label: String,
+        val mask: Long?,
+        val lteAllowed: Boolean,
+        val nrAllowed: Boolean,
+    )
+
+    enum class RootForceVerdict {
+        NR_CONNECTED,
+        NSA_AVAILABLE,
+        LOCAL_POLICY_BLOCKED,
+        WAITING_FOR_NR_CELL,
+        MODEM_OR_NETWORK_REJECTED,
+        UNKNOWN,
+    }
+
+    data class RootForceReport(
+        val active: Boolean,
+        val gates: List<NetworkGate>,
+        val carrierNsa: Boolean,
+        val carrierSa: Boolean,
+        val nrAvailable: Boolean?,
+        val endcAvailable: Boolean?,
+        val dataRat: String,
+        val verdict: RootForceVerdict,
+    )
+
+    data class RootForceResult(
+        val applied: Boolean,
+        val failedGates: List<String>,
+        val report: RootForceReport,
     )
 
     val easyModeEnabled: Boolean
@@ -262,6 +323,9 @@ class SubscriptionModer(
             it.putBoolean(CarrierConfigManager.KEY_EDITABLE_ENHANCED_4G_LTE_BOOL, true)
             it.putBoolean(CarrierConfigManager.KEY_ENHANCED_4G_LTE_ON_BY_DEFAULT_BOOL, true)
             it.putBoolean(CarrierConfigManager.KEY_HIDE_ENHANCED_4G_LTE_BOOL, false)
+            it.putBoolean(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL, false)
+            it.putBoolean(CarrierConfigManager.KEY_SHOW_4G_FOR_LTE_DATA_ICON_BOOL, false)
+            it.putBoolean(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL, true)
         }
         val caRequested = if (getTensorLteCaEnabled() == true) true else setTensorLteCaEnabled(true)
         restartIMSRegistration()
@@ -444,10 +508,59 @@ class SubscriptionModer(
         val servingLteBands: IntArray,
         val servingNrBands: IntArray,
         val dataRat: String,
+        val displayTechnology: String,
+        val usingCarrierAggregation: Boolean,
+        val nrState: Int,
         val nrAvailable: Boolean?,
         val endcAvailable: Boolean?,
+        val dcNrRestricted: Boolean?,
+        val imsRegistered: Boolean,
+        val imsTransport: String,
+        val serviceState: String,
+        val operatorName: String,
+        val operatorNumeric: String,
+        val roaming: Boolean?,
+        val channelNumber: Int?,
+        val duplexMode: Int?,
+        val registrationRejectCause: Int?,
+        val registeredPlmn: String?,
+        val registrationServices: List<Int>,
+        val networkSearching: Boolean?,
+        val nonTerrestrialNetwork: Boolean?,
+        val registrationSummary: String,
+        val serviceStateSummary: String,
+        val cells: List<CellSnapshot>,
     )
 
+    data class CellSnapshot(
+        val type: String,
+        val registered: Boolean,
+        val band: String,
+        val channel: Int,
+        val pci: Int,
+        val tac: Int,
+        val cellId: String,
+        val dbm: Int,
+        val level: Int,
+        val rsrp: Int?,
+        val rsrq: Int?,
+        val sinr: Int?,
+        val rssi: Int?,
+        val cqi: Int?,
+        val timingAdvance: Int?,
+        val bandwidthKhz: Int?,
+        val frequencyKhz: Long?,
+        val allBands: String,
+        val csiRsrp: Int?,
+        val csiRsrq: Int?,
+        val csiSinr: Int?,
+        val csiCqiTable: Int?,
+        val csiCqiReport: String?,
+        val connectionStatus: Int,
+        val operator: String,
+    )
+
+    @SuppressLint("MissingPermission")
     fun getRadioDiagnostics(): RadioDiagnostics {
         val phone = this.loadCachedInterface { telephony }
         var refreshedCells: List<CellInfo>? = null
@@ -489,6 +602,103 @@ class SubscriptionModer(
         )
         val dataInfo = registration?.dataSpecificInfo
         val servingIdentity = registration?.cellIdentity
+        val cellSnapshots = cells.mapNotNull { cell ->
+            when (cell) {
+                is CellInfoLte -> {
+                    val identity = cell.cellIdentity
+                    val signal = cell.cellSignalStrength
+                    val band = identity.bands.firstOrNull()
+                        ?: AccessNetworkUtils.getOperatingBandForEarfcn(identity.earfcn)
+                    CellSnapshot(
+                        type = "LTE",
+                        registered = cell.isRegistered,
+                        band = if (band == AccessNetworkUtils.INVALID_BAND) "—" else "B$band",
+                        channel = identity.earfcn,
+                        pci = identity.pci,
+                        tac = identity.tac,
+                        cellId = identity.ci.toString(),
+                        dbm = signal.dbm,
+                        level = signal.level,
+                        rsrp = signal.rsrp.validSignalValue(),
+                        rsrq = signal.rsrq.validSignalValue(),
+                        sinr = signal.rssnr.validSignalValue(),
+                        rssi = signal.rssi.validSignalValue(),
+                        cqi = signal.cqi.validSignalValue(),
+                        timingAdvance = signal.timingAdvance.validSignalValue(),
+                        bandwidthKhz = identity.bandwidth.takeIf { it > 0 && it != Int.MAX_VALUE },
+                        frequencyKhz = null,
+                        allBands = identity.bands.joinToString(prefix = "[", postfix = "]") { "B$it" },
+                        csiRsrp = null,
+                        csiRsrq = null,
+                        csiSinr = null,
+                        csiCqiTable = null,
+                        csiCqiReport = null,
+                        connectionStatus = cell.cellConnectionStatus,
+                        operator = listOfNotNull(identity.mccString, identity.mncString).joinToString("-"),
+                    )
+                }
+                is CellInfoNr -> {
+                    val identity = cell.cellIdentity as CellIdentityNr
+                    val signal = cell.cellSignalStrength as CellSignalStrengthNr
+                    val band = identity.bands.firstOrNull()
+                        ?: AccessNetworkUtils.getOperatingBandForNrarfcn(identity.nrarfcn)
+                    CellSnapshot(
+                        type = "NR",
+                        registered = cell.isRegistered,
+                        band = if (band == AccessNetworkUtils.INVALID_BAND) "—" else "n$band",
+                        channel = identity.nrarfcn,
+                        pci = identity.pci,
+                        tac = identity.tac,
+                        cellId = identity.nci.toString(),
+                        dbm = signal.dbm,
+                        level = signal.level,
+                        rsrp = signal.ssRsrp.validSignalValue(),
+                        rsrq = signal.ssRsrq.validSignalValue(),
+                        sinr = signal.ssSinr.validSignalValue(),
+                        rssi = null,
+                        cqi = null,
+                        timingAdvance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            signal.timingAdvanceMicros.validSignalValue()
+                        } else {
+                            null
+                        },
+                        bandwidthKhz = null,
+                        frequencyKhz = nrArfcnToFrequencyKhz(identity.nrarfcn),
+                        allBands = identity.bands.joinToString(prefix = "[", postfix = "]") { "n$it" },
+                        csiRsrp = signal.csiRsrp.validSignalValue(),
+                        csiRsrq = signal.csiRsrq.validSignalValue(),
+                        csiSinr = signal.csiSinr.validSignalValue(),
+                        csiCqiTable = signal.csiCqiTableIndex.validSignalValue(),
+                        csiCqiReport = signal.csiCqiReport
+                            .takeIf { it.isNotEmpty() }
+                            ?.joinToString(prefix = "[", postfix = "]"),
+                        connectionStatus = cell.cellConnectionStatus,
+                        operator = listOfNotNull(identity.mccString, identity.mncString).joinToString("-"),
+                    )
+                }
+                else -> null
+            }
+        }.sortedWith(compareByDescending<CellSnapshot> { it.registered }.thenByDescending { it.dbm })
+        val imsRegistered = runCatching { phone.isImsRegistered(subscriptionId) }.getOrDefault(false)
+        val imsTechnology = runCatching {
+            val method = phone.javaClass.methods.first {
+                it.name == "getImsRegTechnologyForMmTel" && it.parameterCount == 1
+            }
+            method.invoke(phone, subscriptionId) as Int
+        }.getOrDefault(-1)
+        val nrState = runCatching {
+            state?.javaClass?.getMethod("getNrState")?.invoke(state) as Int
+        }.getOrDefault(0)
+        val usingCarrierAggregation = runCatching {
+            state?.javaClass?.getMethod("isUsingCarrierAggregation")?.invoke(state) as Boolean
+        }.getOrDefault(false)
+        val dataRat = registration?.accessNetworkTechnology?.let(TelephonyManager::getNetworkTypeName) ?: "Unknown"
+        val displayTechnology = when {
+            dataRat == "NR" -> "5G SA"
+            dataRat == "LTE" && nrState == 3 -> "5G NSA"
+            dataRat == "LTE" && usingCarrierAggregation -> "LTE+"
+            else -> dataRat
+        }
         return RadioDiagnostics(
             lteBands = lteCells.flatMap {
                 val identity = it.cellIdentity
@@ -508,10 +718,243 @@ class SubscriptionModer(
             }.distinct().sorted().toIntArray(),
             servingLteBands = (servingIdentity as? CellIdentityLte)?.bands?.sortedArray() ?: intArrayOf(),
             servingNrBands = (servingIdentity as? CellIdentityNr)?.bands?.sortedArray() ?: intArrayOf(),
-            dataRat = registration?.accessNetworkTechnology?.let(TelephonyManager::getNetworkTypeName) ?: "Unknown",
+            dataRat = dataRat,
+            displayTechnology = displayTechnology,
+            usingCarrierAggregation = usingCarrierAggregation,
+            nrState = nrState,
             nrAvailable = dataInfo?.isNrAvailable,
             endcAvailable = dataInfo?.isEnDcAvailable,
+            dcNrRestricted = dataInfo?.isDcNrRestricted,
+            imsRegistered = imsRegistered,
+            imsTransport = when (imsTechnology) {
+                0 -> "LTE"
+                1 -> "IWLAN"
+                2 -> "Cross-SIM"
+                3 -> "NR"
+                else -> if (imsRegistered) "Registered (transport hidden)" else "Not registered"
+            },
+            serviceState = when (state?.state) {
+                ServiceState.STATE_IN_SERVICE -> "In service"
+                ServiceState.STATE_EMERGENCY_ONLY -> "Emergency only"
+                ServiceState.STATE_OUT_OF_SERVICE -> "Out of service"
+                ServiceState.STATE_POWER_OFF -> "Radio off"
+                else -> "Unknown"
+            },
+            operatorName = runCatching { state?.operatorAlphaLong.orEmpty() }.getOrDefault(""),
+            operatorNumeric = runCatching { state?.operatorNumeric.orEmpty() }.getOrDefault(""),
+            roaming = state?.roaming,
+            channelNumber = state?.channelNumber?.takeIf { it >= 0 },
+            duplexMode = state?.duplexMode?.takeIf { it >= 0 },
+            registrationRejectCause = if (Build.VERSION.SDK_INT >= 35) registration?.rejectCause else null,
+            registeredPlmn = registration?.registeredPlmn,
+            registrationServices = registration?.availableServices.orEmpty(),
+            networkSearching = if (Build.VERSION.SDK_INT >= 34) registration?.isNetworkSearching else null,
+            nonTerrestrialNetwork =
+                if (Build.VERSION.SDK_INT >= 35) registration?.isNonTerrestrialNetwork else null,
+            registrationSummary = registration?.toString().orEmpty(),
+            serviceStateSummary = state?.toString().orEmpty(),
+            cells = cellSnapshots,
         )
+    }
+
+    private fun Int.validSignalValue(): Int? =
+        takeUnless { it == Int.MAX_VALUE || it == Int.MIN_VALUE || it == 99 || it == 2147483647 }
+
+    /**
+     * 3GPP TS 38.104 global NR-ARFCN raster. This is the reference frequency Android's
+     * NRARFCN represents; the configured carrier bandwidth still determines occupied spectrum.
+     */
+    private fun nrArfcnToFrequencyKhz(nrarfcn: Int): Long? = when (nrarfcn) {
+        in 0..599_999 -> nrarfcn * 5L
+        in 600_000..2_016_666 -> 3_000_000L + (nrarfcn - 600_000L) * 15L
+        in 2_016_667..3_279_165 -> 24_250_080L + (nrarfcn - 2_016_667L) * 60L
+        else -> null
+    }
+
+    fun getRootForceReport(radio: RadioDiagnostics? = null): RootForceReport {
+        val phone = this.loadCachedInterface { telephony }
+        val gates = ROOT_FORCE_REASONS.map { (reason, label) ->
+            val mask = runCatching {
+                phone.getAllowedNetworkTypesForReason(subscriptionId, reason)
+            }.getOrNull()
+            NetworkGate(
+                reason = reason,
+                label = label,
+                mask = mask,
+                lteAllowed = mask?.let { it and TelephonyManager.NETWORK_TYPE_BITMASK_LTE != 0L } == true,
+                nrAllowed = mask?.let { it and TelephonyManager.NETWORK_TYPE_BITMASK_NR != 0L } == true,
+            )
+        }
+        val nrAvailability = getIntArrayValue(CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY)
+        val currentRadio = radio ?: getRadioDiagnostics()
+        val localPolicyOpen = gates.filter { it.mask != null }.all { it.lteAllowed && it.nrAllowed } &&
+            nrAvailability.contains(CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA) &&
+            nrAvailability.contains(CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA)
+        val verdict = when {
+            currentRadio.dataRat == "NR" || currentRadio.servingNrBands.isNotEmpty() ->
+                RootForceVerdict.NR_CONNECTED
+            !localPolicyOpen -> RootForceVerdict.LOCAL_POLICY_BLOCKED
+            currentRadio.endcAvailable == true -> RootForceVerdict.NSA_AVAILABLE
+            currentRadio.endcAvailable == false && currentRadio.nrBands.isEmpty() ->
+                RootForceVerdict.WAITING_FOR_NR_CELL
+            currentRadio.nrAvailable == true -> RootForceVerdict.MODEM_OR_NETWORK_REJECTED
+            else -> RootForceVerdict.UNKNOWN
+        }
+        return RootForceReport(
+            active = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+                .getBoolean(ROOT_FORCE_ACTIVE_PREFIX + subscriptionId, false),
+            gates = gates,
+            carrierNsa = nrAvailability.contains(CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA),
+            carrierSa = nrAvailability.contains(CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA),
+            nrAvailable = currentRadio.nrAvailable,
+            endcAvailable = currentRadio.endcAvailable,
+            dataRat = currentRadio.dataRat,
+            verdict = verdict,
+        )
+    }
+
+    /**
+     * Opens every Android-side NR gate exposed by TelephonyManager and CarrierConfig. This cannot
+     * make a cell broadcast NR/EN-DC, add unsupported RF bands, or bypass network authentication.
+     */
+    fun applyRootForce(): RootForceResult {
+        check(PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+            "Root Force requires the UID 0 backend"
+        }
+        val phone = this.loadCachedInterface { telephony }
+        val prefs = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+        val firstApply = !prefs.getBoolean(ROOT_FORCE_ACTIVE_PREFIX + subscriptionId, false)
+        val editor = prefs.edit()
+        if (firstApply) {
+            ROOT_FORCE_REASONS.forEach { (reason, _) ->
+                runCatching { phone.getAllowedNetworkTypesForReason(subscriptionId, reason) }
+                    .onSuccess { editor.putLong("$ROOT_FORCE_MASK_PREFIX${subscriptionId}_$reason", it) }
+            }
+            val bands = runCatching { getBandSelection() }.getOrNull()
+            editor
+                .putString(
+                    ROOT_FORCE_NR_AVAIL_PREFIX + subscriptionId,
+                    encode(getIntArrayValue(CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY)),
+                )
+                .putString(ROOT_FORCE_LTE_BANDS_PREFIX + subscriptionId, encode(bands?.lteBands ?: intArrayOf()))
+                .putString(ROOT_FORCE_NR_BANDS_PREFIX + subscriptionId, encode(bands?.nrBands ?: intArrayOf()))
+            (ROOT_FORCE_PROPERTIES + ("persist.radio.is_vonr_enabled_$simSlotIndex" to "true")).forEach { (name, _) ->
+                editor.putString(
+                    "$ROOT_FORCE_PROPERTY_PREFIX${subscriptionId}_$name",
+                    PrivilegeManager.getRootSystemProperty(name).orEmpty(),
+                )
+            }
+            editor.apply()
+        }
+
+        val failedGates = mutableListOf<String>()
+        val requiredTypes =
+            TelephonyManager.NETWORK_TYPE_BITMASK_LTE or TelephonyManager.NETWORK_TYPE_BITMASK_NR
+        ROOT_FORCE_REASONS.forEach { (reason, label) ->
+            val current = runCatching {
+                phone.getAllowedNetworkTypesForReason(subscriptionId, reason)
+            }.getOrNull() ?: return@forEach
+            val accepted = runCatching {
+                setAllowedNetworkTypesForReason(phone, reason, current or requiredTypes)
+            }.getOrDefault(false)
+            if (!accepted) failedGates += label
+        }
+        runCatching { setBandSelectionInternal(intArrayOf(), intArrayOf()) }
+            .onFailure { failedGates += "Automatic bands" }
+        (ROOT_FORCE_PROPERTIES + ("persist.radio.is_vonr_enabled_$simSlotIndex" to "true")).forEach { (name, value) ->
+            if (!PrivilegeManager.setRootSystemProperty(name, value)) failedGates += name
+        }
+        // resetIms can reload carrier state on recent Android builds, so restart first and publish
+        // the force override afterwards.
+        runCatching { restartIMSRegistration() }.onFailure { failedGates += "IMS restart" }
+        runCatching {
+            publishBundle {
+                it.putIntArray(
+                    CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                    intArrayOf(
+                        CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
+                        CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA,
+                    ),
+                )
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_ENHANCED_4G_LTE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_ENHANCED_4G_LTE_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_4G_FOR_LTE_DATA_ICON_BOOL, false)
+            }
+        }.onFailure { failedGates += "Carrier configuration" }
+        Thread.sleep(1_500)
+        // CarrierConfig changes may cause Phone to recompute the carrier reason. Reassert every
+        // readable reason after the broadcast, then verify the actual intersection below.
+        ROOT_FORCE_REASONS.forEach { (reason, label) ->
+            val current = runCatching {
+                phone.getAllowedNetworkTypesForReason(subscriptionId, reason)
+            }.getOrNull() ?: return@forEach
+            val accepted = runCatching {
+                setAllowedNetworkTypesForReason(phone, reason, current or requiredTypes)
+            }.getOrDefault(false)
+            if (!accepted) failedGates += label
+        }
+        prefs.edit()
+            .putBoolean(ROOT_FORCE_ACTIVE_PREFIX + subscriptionId, true)
+            .putInt(PROFILE_MODE_PREFIX + subscriptionId, 0)
+            .apply()
+        Thread.sleep(750)
+        val report = getRootForceReport()
+        val readableGatesOpen = report.gates.filter { it.mask != null }.all { it.lteAllowed && it.nrAllowed }
+        return RootForceResult(
+            applied = failedGates.isEmpty() && readableGatesOpen && report.carrierNsa && report.carrierSa,
+            failedGates = failedGates.distinct(),
+            report = report,
+        )
+    }
+
+    fun restoreRootForce(): Boolean {
+        if (PrivilegeManager.activeMode != PrivilegeMode.ROOT || !PrivilegeManager.isRootReady()) return false
+        val prefs = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+        if (!prefs.getBoolean(ROOT_FORCE_ACTIVE_PREFIX + subscriptionId, false)) return true
+        val phone = this.loadCachedInterface { telephony }
+        var restored = true
+        ROOT_FORCE_REASONS.forEach { (reason, _) ->
+            val key = "$ROOT_FORCE_MASK_PREFIX${subscriptionId}_$reason"
+            if (prefs.contains(key)) {
+                restored = runCatching {
+                    setAllowedNetworkTypesForReason(phone, reason, prefs.getLong(key, 0L))
+                }.getOrDefault(false) && restored
+            }
+        }
+        restored = runCatching {
+            updateCarrierConfig(
+                CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                decode(prefs.getString(ROOT_FORCE_NR_AVAIL_PREFIX + subscriptionId, "")),
+            )
+            setBandSelectionInternal(
+                decode(prefs.getString(ROOT_FORCE_LTE_BANDS_PREFIX + subscriptionId, "")),
+                decode(prefs.getString(ROOT_FORCE_NR_BANDS_PREFIX + subscriptionId, "")),
+            )
+        }.isSuccess && restored
+        (ROOT_FORCE_PROPERTIES + ("persist.radio.is_vonr_enabled_$simSlotIndex" to "true")).forEach { (name, _) ->
+            val key = "$ROOT_FORCE_PROPERTY_PREFIX${subscriptionId}_$name"
+            if (prefs.contains(key)) {
+                restored = PrivilegeManager.setRootSystemProperty(name, prefs.getString(key, "").orEmpty()) && restored
+            }
+        }
+        val editor = prefs.edit().remove(ROOT_FORCE_ACTIVE_PREFIX + subscriptionId)
+        ROOT_FORCE_REASONS.forEach { (reason, _) ->
+            editor.remove("$ROOT_FORCE_MASK_PREFIX${subscriptionId}_$reason")
+        }
+        editor
+            .remove(ROOT_FORCE_NR_AVAIL_PREFIX + subscriptionId)
+            .remove(ROOT_FORCE_LTE_BANDS_PREFIX + subscriptionId)
+            .remove(ROOT_FORCE_NR_BANDS_PREFIX + subscriptionId)
+        (ROOT_FORCE_PROPERTIES + ("persist.radio.is_vonr_enabled_$simSlotIndex" to "true")).forEach { (name, _) ->
+            editor.remove("$ROOT_FORCE_PROPERTY_PREFIX${subscriptionId}_$name")
+        }
+        editor.apply()
+        runCatching { restartIMSRegistration() }
+        return restored
     }
 
     fun requestNsaOnly(): Boolean {
@@ -655,10 +1098,45 @@ class SubscriptionModer(
         }
     }
 
+    /**
+     * Applies conservative, globally useful IMS visibility flags while leaving radio mode and
+     * band selection automatic. This can expose carrier-supported features but cannot provision
+     * an IMS account or bypass the carrier's subscriber/device authorization.
+     */
+    fun applyCompatibilityProfile(advertiseNr: Boolean): Boolean =
+        runCatching {
+            publishBundle {
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_MODE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_ROAMING_MODE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_IMS_REGISTRATION_STATUS_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_EDITABLE_ENHANCED_4G_LTE_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_ENHANCED_4G_LTE_ON_BY_DEFAULT_BOOL, true)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_ENHANCED_4G_LTE_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL, false)
+                it.putBoolean(CarrierConfigManager.KEY_SHOW_4G_FOR_LTE_DATA_ICON_BOOL, false)
+                if (advertiseNr) {
+                    it.putIntArray(
+                        CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                        intArrayOf(
+                            CarrierConfigManager.CARRIER_NR_AVAILABILITY_NSA,
+                            CarrierConfigManager.CARRIER_NR_AVAILABILITY_SA,
+                        ),
+                    )
+                }
+            }
+            setBandSelectionInternal(intArrayOf(), intArrayOf())
+            setRadioMode(0, recordChange = false)
+            restartIMSRegistration()
+            true
+        }.onFailure { Log.e(TAG, "Unable to apply compatibility profile", it) }.getOrDefault(false)
+
     /** Returns null on devices without Samsung SLSI's OEM radio service. */
     fun getTensorLteCaEnabled(): Boolean? {
         val service = SystemServiceHelper.getSystemService(OEM_RIL_SERVICE) ?: return null
-        val binder: IBinder = ShizukuBinderWrapper(service)
+        val binder: IBinder = PrivilegeManager.wrapService(OEM_RIL_SERVICE, service)
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
         return try {
@@ -684,7 +1162,7 @@ class SubscriptionModer(
     /** Requests the Tensor modem CA node and verifies the value through the matching getter. */
     fun setTensorLteCaEnabled(enabled: Boolean): Boolean? {
         val service = SystemServiceHelper.getSystemService(OEM_RIL_SERVICE) ?: return null
-        val binder: IBinder = ShizukuBinderWrapper(service)
+        val binder: IBinder = PrivilegeManager.wrapService(OEM_RIL_SERVICE, service)
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
         return try {
@@ -715,16 +1193,37 @@ class SubscriptionModer(
         val iCclInstance = this.loadCachedInterface { carrierConfigLoader }
         if (bundle != null) {
             val args = toPersistableBundle(bundle)
-            iCclInstance.overrideConfig(subscriptionId, args, true)
+            try {
+                iCclInstance.overrideConfig(subscriptionId, args, true)
+            } catch (e: SecurityException) {
+                if (e.message?.contains("persistent=true") == true) {
+                    iCclInstance.overrideConfig(subscriptionId, args, false)
+                } else {
+                    throw e
+                }
+            }
         } else {
-            iCclInstance.overrideConfig(subscriptionId, null, true)
+            try {
+                iCclInstance.overrideConfig(subscriptionId, null, true)
+            } catch (e: SecurityException) {
+                if (e.message?.contains("persistent=true") == true) {
+                    iCclInstance.overrideConfig(subscriptionId, null, false)
+                } else {
+                    throw e
+                }
+            }
         }
     }
 
     private fun overrideConfigUsingBroker(bundle: Bundle?) {
+        if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+            overrideConfigDirectly(bundle)
+            return
+        }
         val am =
             IActivityManager.Stub.asInterface(
-                ShizukuBinderWrapper(
+                PrivilegeManager.wrapService(
+                    Context.ACTIVITY_SERVICE,
                     SystemServiceHelper.getSystemService(Context.ACTIVITY_SERVICE),
                 ),
             )

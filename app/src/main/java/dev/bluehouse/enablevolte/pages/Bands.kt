@@ -37,7 +37,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 import dev.bluehouse.enablevolte.R
+import dev.bluehouse.enablevolte.PrivilegeManager
+import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.components.ClickablePropertyView
 import dev.bluehouse.enablevolte.components.GlassSurface
@@ -107,7 +110,10 @@ private fun BandPicker(
 
 @Suppress("ktlint:standard:function-naming")
 @Composable
-fun Bands(subId: Int) {
+fun Bands(
+    subId: Int,
+    navController: NavController,
+) {
     val context = LocalContext.current
     val moder = remember(subId) { SubscriptionModer(context, subId) }
     val scope = rememberCoroutineScope()
@@ -124,6 +130,8 @@ fun Bands(subId: Int) {
     var visibleBands by rememberSaveable { mutableStateOf(context.getString(R.string.checking)) }
     var nrAttachStatus by rememberSaveable { mutableStateOf(context.getString(R.string.checking)) }
     var noServiceChange by rememberSaveable { mutableStateOf<String?>(null) }
+    var rootForceReport by remember { mutableStateOf<SubscriptionModer.RootForceReport?>(null) }
+    var rootForceBusy by rememberSaveable { mutableStateOf(false) }
 
     fun loadSelection() {
         scope.launch {
@@ -161,6 +169,14 @@ fun Bands(subId: Int) {
                 radio.nrAvailable == true -> context.getString(R.string.nr_advertised_no_endc)
                 radio.nrAvailable == false -> context.getString(R.string.nr_not_advertised)
                 else -> context.getString(R.string.status_unknown)
+            }
+            rootForceReport = if (
+                PrivilegeManager.activeMode == PrivilegeMode.ROOT &&
+                PrivilegeManager.isRootReady()
+            ) {
+                withContext(Dispatchers.IO) { moder.getRootForceReport(radio) }
+            } else {
+                null
             }
             noServiceChange = withContext(Dispatchers.IO) {
                 if (!moder.hasCellularService()) moder.lastChangeDescription else null
@@ -208,12 +224,57 @@ fun Bands(subId: Int) {
         }
     }
 
+    fun applyRootForce() {
+        if (rootForceBusy) return
+        scope.launch {
+            rootForceBusy = true
+            val result = withContext(Dispatchers.IO) { moder.applyRootForce() }
+            val message = if (result.applied) {
+                context.getString(R.string.root_force_applied)
+            } else {
+                context.getString(
+                    R.string.root_force_partial,
+                    result.failedGates.joinToString().ifEmpty { context.getString(R.string.status_unknown) },
+                )
+            }
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            rootForceBusy = false
+            loadSelection()
+        }
+    }
+
+    fun restoreRootForce() {
+        if (rootForceBusy) return
+        scope.launch {
+            rootForceBusy = true
+            val restored = withContext(Dispatchers.IO) { moder.restoreRootForce() }
+            Toast.makeText(
+                context,
+                if (restored) R.string.root_force_restored else R.string.root_force_restore_failed,
+                Toast.LENGTH_LONG,
+            ).show()
+            rootForceBusy = false
+            loadSelection()
+        }
+    }
+
     LaunchedEffect(subId) { loadSelection() }
 
     Column(
         modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { navController.navigate("config/$subId") },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.sim_config))
+            }
+            Button(onClick = {}, modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.bands))
+            }
+        }
         noServiceChange?.let { change ->
             GlassSurface(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -260,6 +321,71 @@ fun Bands(subId: Int) {
         ClickablePropertyView(label = stringResource(R.string.detected_bands), value = visibleBands)
         ClickablePropertyView(label = stringResource(R.string.nr_attach_status), value = nrAttachStatus)
         Text(text = stringResource(R.string.nr_force_limit))
+
+        rootForceReport?.let { report ->
+            HeaderText(text = stringResource(R.string.root_force_lab))
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        stringResource(
+                            if (report.active) R.string.root_force_active else R.string.root_force_inactive,
+                        ),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (report.active) Color(0xFF198754) else MaterialTheme.colorScheme.onSurface,
+                    )
+                    report.gates.forEach { gate ->
+                        val value = when {
+                            gate.mask == null -> stringResource(R.string.gate_unreadable)
+                            gate.lteAllowed && gate.nrAllowed -> stringResource(R.string.gate_open)
+                            else -> stringResource(R.string.gate_blocked)
+                        }
+                        ClickablePropertyView(label = gate.label, value = value)
+                    }
+                    ClickablePropertyView(
+                        label = stringResource(R.string.carrier_nr_modes),
+                        value = buildString {
+                            if (report.carrierNsa) append("NSA")
+                            if (report.carrierNsa && report.carrierSa) append(" + ")
+                            if (report.carrierSa) append("SA")
+                            if (!report.carrierNsa && !report.carrierSa) append(context.getString(R.string.gate_blocked))
+                        },
+                    )
+                    Text(
+                        text = stringResource(
+                            when (report.verdict) {
+                                SubscriptionModer.RootForceVerdict.NR_CONNECTED -> R.string.root_verdict_connected
+                                SubscriptionModer.RootForceVerdict.NSA_AVAILABLE -> R.string.root_verdict_nsa_available
+                                SubscriptionModer.RootForceVerdict.LOCAL_POLICY_BLOCKED -> R.string.root_verdict_local_block
+                                SubscriptionModer.RootForceVerdict.WAITING_FOR_NR_CELL -> R.string.root_verdict_no_nr_cell
+                                SubscriptionModer.RootForceVerdict.MODEM_OR_NETWORK_REJECTED -> R.string.root_verdict_rejected
+                                SubscriptionModer.RootForceVerdict.UNKNOWN -> R.string.root_verdict_unknown
+                            },
+                        ),
+                    )
+                    Button(
+                        enabled = !rootForceBusy,
+                        onClick = ::applyRootForce,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.force_all_local_5g_gates))
+                    }
+                    if (report.active) {
+                        OutlinedButton(
+                            enabled = !rootForceBusy,
+                            onClick = ::restoreRootForce,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.restore_root_force_snapshot))
+                        }
+                    }
+                    Text(stringResource(R.string.root_force_warning))
+                }
+            }
+        }
 
         HeaderText(text = stringResource(R.string.band_selection))
         RadioProfileChoice(

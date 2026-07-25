@@ -8,10 +8,16 @@ import android.os.Build.VERSION_CODES
 import android.telephony.CarrierConfigManager
 import android.util.Log
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -23,9 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import dev.bluehouse.enablevolte.CarrierModer
 import dev.bluehouse.enablevolte.R
+import dev.bluehouse.enablevolte.PrivilegeManager
+import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.ShizukuStatus
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.checkShizukuPermission
@@ -124,7 +133,10 @@ fun Config(
     }
 
     LaunchedEffect(true) {
-        if (checkShizukuPermission(0) == ShizukuStatus.GRANTED) {
+        if (
+            (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) ||
+            checkShizukuPermission(0) == ShizukuStatus.GRANTED
+        ) {
             if (carrierModer.deviceSupportsIMS && subId >= 0) {
                 configurable =
                     try {
@@ -151,6 +163,17 @@ fun Config(
         InfiniteLoadingDialog()
     } else {
         Column(modifier = Modifier.padding(Dp(16f)).verticalScroll(scrollState)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {}, modifier = Modifier.weight(1f)) {
+                    Text(stringResource(R.string.sim_config))
+                }
+                OutlinedButton(
+                    onClick = { navController.navigate("bands/$subId") },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.bands))
+                }
+            }
             HeaderText(text = stringResource(R.string.feature_toggles))
             RadioSelectPropertyView(
                 label = stringResource(R.string.nr_architecture),
@@ -593,13 +616,13 @@ fun Config(
                 label = stringResource(R.string.expert_mode),
                 value = "",
             ) {
-                navController.navigate("config$subId/edit")
+                navController.navigate("config/$subId/edit")
             }
             ClickablePropertyView(
                 label = stringResource(R.string.dump_config),
                 value = "",
             ) {
-                navController.navigate("config$subId/dump")
+                navController.navigate("config/$subId/dump")
             }
             ClickablePropertyView(
                 label = stringResource(R.string.restart_ims_registration),

@@ -1,8 +1,8 @@
 # Pixel IMS 5G
 
-Pixel IMS 5G is an experimental, Shizuku-powered Android app for Google Tensor Pixels. This build is tested on a Pixel 7 Pro running Android 17.
+Pixel IMS 5G is an experimental, root- or Shizuku-powered Android app for Google Tensor Pixels. This build is tested on a rooted Pixel 7 Pro running Android 17.
 
-Version 0.8 adds per-SIM Easy Mode for VoLTE and LTE carrier aggregation. Easy Mode applies automatic bands, LTE+NR allowance, enhanced LTE configuration, and the Tensor modem CA node together, then locks advanced controls until switched off. Detected bands remain green even when Automatic selection is active.
+Version 0.12.5 adds a two-minute, 24-sample field test with NRARFCN/frequency, SS/CSI measurements, registration and reject state, callback events, per-sample PCC/SCC and TelephonyRegistry evidence, CarrierConfig gates, and start/end root radio evidence. Version 0.12 separated Controls and Monitoring and added the 5G attach trace, CarrierConfig diff viewer, NR capability decoder, and root physical-channel monitoring.
 
 ## Features
 
@@ -27,12 +27,21 @@ Version 0.8 adds per-SIM Easy Mode for VoLTE and LTE carrier aggregation. Easy M
 - Diagnose common IMS failures and restore Google/carrier defaults from a FIX action.
 - Undo the last radio or band change when it removes cellular service.
 - Restore all active SIMs, clear app recovery data, and reboot from the top recovery action.
+- Show serving and neighbor cell identity, channel, band, PCI, TAC, RSRP, RSRQ, SINR, and a live signal history.
+- Keep IWLAN (IMS over Wi-Fi), Wi-Fi frequency, and the cellular anchor separate so an “IWLAN 1800” label is not mistaken for a Wi-Fi band.
+- Recognize Sri Lankan MCC-MNC profiles for Dialog (41302), SLT-MOBITEL (41301), Airtel Lanka (41305), and Hutch (41308).
+- Audit the User, Power, Carrier, 2G-control, and Test network-type gates in Root mode.
+- Force LTE + NR through every gate Android 17 exposes, set the approved IMS debug properties, and distinguish a local policy block from missing EN-DC/network acceptance.
+- Restore the pre-force network masks, band selection, carrier NR modes, and system properties.
+- Save a field-test report in Downloads with visible tower IDs, bands/channels, signal metrics, CA, NR state, EN-DC, IMS transport, relevant CarrierConfig values, network masks, device build, and baseband.
+- Exclude phone number, IMSI, and ICCID from field-test reports and warn that tower IDs can reveal approximate location.
+- Show LTE+ only from confirmed carrier aggregation, 5G NSA/SA only from connected NR state, and VoWiFi only from confirmed IMS-over-IWLAN registration.
 
 ## Install and use
 
-1. Install and start Shizuku using Wireless debugging or ADB.
+1. Prepare either a compatible root manager or Shizuku using Wireless debugging/ADB.
 2. Install the APK and open **Pixel IMS 5G**.
-3. Grant the Shizuku permission.
+3. Choose Root or Shizuku and approve access.
 4. Open the SIM tab.
 5. Set **5G NR architecture** to **NSA + SA** and enable **VoLTE**.
 6. Set **Preferred radio mode** to **NSA/5G preferred (LTE + NR)**.
@@ -41,6 +50,12 @@ Version 0.8 adds per-SIM Easy Mode for VoLTE and LTE carrier aggregation. Easy M
 The **Bands** tab provides selectable LTE and NR chips. Selecting several LTE bands requests eligible carrier-aggregation candidates, but cannot force a specific CA combination; that decision remains with the modem and network. Pixel firmware may accept the standard Android request and then discard it. The app verifies the retained restriction and reports rejection. Always use **Automatic** before travelling or when service disappears.
 
 The detected-band list contains only cells the modem currently reports; it is not a complete spectrum scan. **Force NSA preference** enables the NSA carrier profile and allows LTE+NR. **Force SA-only** permits only NR and is deliberately disruptive. Neither mode can make a network accept registration or supply EN-DC on a cell where the carrier has disabled it.
+
+### Root Force Lab
+
+Root Force is the strongest model-independent approach the app can safely apply across Tensor generations. It forces every Android-side LTE/NR mask that the current OS exposes, sets CarrierConfig to NSA + SA, enables fixed allow-listed IMS properties, restores automatic band scanning, and restarts IMS. Android 17 CarrierConfig changes are applied through the instrumentation permission broker because UID 0 has no Android package identity for the platform's package/feature check.
+
+This does not write Shannon NV/EFS. Shannon NV item names and meanings vary by Pixel model and modem build; using a script made for another device can crash or disable the modem. A future NV layer must use a signed profile matching the exact device, baseband, and firmware, take a backup first, and provide a tested recovery path. Root cannot create an RF signal, make an LTE cell advertise EN-DC, add unsupported hardware bands, or make a carrier authenticate a SIM/IMS account.
 
 Band diagnostics request a fresh modem measurement. If Android omits a band number but exposes the LTE EARFCN or NR-ARFCN, the app derives the operating band using the platform frequency mapping.
 
