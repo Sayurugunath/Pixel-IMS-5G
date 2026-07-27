@@ -1,10 +1,17 @@
 package dev.bluehouse.enablevolte
 
+import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.telephony.SubscriptionInfo
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -37,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -87,6 +95,21 @@ data class Screen(
 val NavDestination.depth: Int get() = this.route?.let { route -> route.count { it == '/' } + 1 } ?: 0
 
 class HomeActivity : ComponentActivity() {
+    companion object {
+        const val EXTRA_OPEN_UPDATES = "open_updates"
+        const val EXTRA_INSTALL_DOWNLOADED_UPDATE = "install_downloaded_update"
+    }
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            UpdateNotificationScheduler.initialize(this)
+        }
+    private val unknownSourcesLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+            continueDownloadedUpdateInstall()
+        }
+    private var navigationRequest by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -97,9 +120,84 @@ class HomeActivity : ComponentActivity() {
         setContent {
             EnableVoLTETheme {
                 GlassBackdrop {
-                    PixelIMSApp()
+                    PixelIMSApp(
+                        startDestination = if (intent.getBooleanExtra(EXTRA_OPEN_UPDATES, false)) {
+                            "home/about"
+                        } else {
+                            "home"
+                        },
+                        navigationRequest = navigationRequest,
+                        onNavigationRequestHandled = { navigationRequest = null },
+                    )
                 }
             }
+        }
+        configureUpdateNotifications()
+        handleUpdateIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_OPEN_UPDATES, false)) {
+            intent.removeExtra(EXTRA_OPEN_UPDATES)
+            navigationRequest = "home/about"
+        } else {
+            handleUpdateIntent(intent)
+        }
+    }
+
+    private fun configureUpdateNotifications() {
+        UpdateNotificationScheduler.initialize(this)
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val prefs = getSharedPreferences("github_updater", MODE_PRIVATE)
+        if (prefs.getBoolean("notification_permission_asked", false)) return
+        android.app.AlertDialog.Builder(this)
+            .setTitle(R.string.update_notification_permission_title)
+            .setMessage(R.string.update_notification_permission_message)
+            .setPositiveButton(R.string.allow_notifications) { _, _ ->
+                prefs.edit().putBoolean("notification_permission_asked", true).apply()
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            .setNegativeButton(R.string.not_now) { _, _ ->
+                prefs.edit().putBoolean("notification_permission_asked", true).apply()
+            }
+            .show()
+    }
+
+    private fun handleUpdateIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_INSTALL_DOWNLOADED_UPDATE, false) != true) return
+        intent.removeExtra(EXTRA_INSTALL_DOWNLOADED_UPDATE)
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            Toast.makeText(this, R.string.install_permission_needed, Toast.LENGTH_LONG).show()
+            unknownSourcesLauncher.launch(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName"),
+                ),
+            )
+        } else {
+            continueDownloadedUpdateInstall()
+        }
+    }
+
+    private fun continueDownloadedUpdateInstall() {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            return
+        }
+        if (!UpdateManager.installDownloadedUpdate(this)) {
+            Toast.makeText(this, R.string.installer_unavailable, Toast.LENGTH_LONG).show()
         }
     }
 }
@@ -107,7 +205,11 @@ class HomeActivity : ComponentActivity() {
 @Suppress("ktlint:standard:function-naming")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PixelIMSApp() {
+fun PixelIMSApp(
+    startDestination: String = "home",
+    navigationRequest: String? = null,
+    onNavigationRequestHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     val navController = rememberNavController()
     val carrierModer = CarrierModer(context)
@@ -121,6 +223,15 @@ fun PixelIMSApp() {
     var privilegeError by rememberSaveable { mutableStateOf<String?>(null) }
     var privilegeConnecting by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(navigationRequest) {
+        navigationRequest?.let { route ->
+            navController.navigate(route) {
+                launchSingleTop = true
+            }
+            onNavigationRequestHandled()
+        }
+    }
 
     fun loadApplication() {
         val mode = PrivilegeManager.selectedMode(context) ?: return
@@ -333,7 +444,7 @@ fun PixelIMSApp() {
             }
         },
     ) { innerPadding ->
-        NavHost(navController, startDestination = "home", Modifier.padding(innerPadding)) {
+        NavHost(navController, startDestination = startDestination, Modifier.padding(innerPadding)) {
             composable("home", context.resources.getString(R.string.home)) {
                 Home(navController)
             }

@@ -10,6 +10,7 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <instrumentation
         android:name="dev.bluehouse.enablevolte.BrokerInstrumentation"
@@ -93,7 +94,8 @@
             android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
         <receiver
             android:name=".UpdateDownloadReceiver"
-            android:exported="false">
+            android:exported="true"
+            android:permission="android.permission.SEND_DOWNLOAD_COMPLETED_INTENTS">
             <intent-filter>
                 <action android:name="android.intent.action.DOWNLOAD_COMPLETE" />
             </intent-filter>
