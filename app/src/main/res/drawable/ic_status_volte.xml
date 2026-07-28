@@ -1,0 +1,42 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="26dp"
+    android:height="26dp"
+    android:viewportWidth="48"
+    android:viewportHeight="36">
+
+    <group android:translateY="6">
+        <!-- Rounded carrier-style badge, inspired by the familiar VoLTE/VoNR indicator. -->
+        <path
+            android:fillColor="@android:color/transparent"
+            android:pathData="M5,3 H43 C45.2,3 47,4.8 47,7 V17 C47,19.2 45.2,21 43,21 H5 C2.8,21 1,19.2 1,17 V7 C1,4.8 2.8,3 5,3 Z"
+            android:strokeColor="@android:color/white"
+            android:strokeLineJoin="round"
+            android:strokeWidth="2" />
+
+        <!-- V -->
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M4.5,6.5 H7 L9.25,16 L11.5,6.5 H14 L10.7,18 H7.8 Z" />
+
+        <!-- o -->
+        <path
+            android:fillColor="@android:color/white"
+            android:fillType="evenOdd"
+            android:pathData="M18.25,8 C14.9,8 13.4,10.2 13.4,13 C13.4,15.8 14.9,18 18.25,18 C21.6,18 23.1,15.8 23.1,13 C23.1,10.2 21.6,8 18.25,8 Z M18.25,10 C19.9,10 20.8,11.15 20.8,13 C20.8,14.85 19.9,16 18.25,16 C16.6,16 15.7,14.85 15.7,13 C15.7,11.15 16.6,10 18.25,10 Z" />
+
+        <!-- L -->
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M24.4,6.5 H26.7 V15.8 H31.3 V18 H24.4 Z" />
+
+        <!-- T -->
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M30.3,6.5 H39 V8.7 H35.8 V18 H33.5 V8.7 H30.3 Z" />
+
+        <!-- E -->
+        <path
+            android:fillColor="@android:color/white"
+            android:pathData="M38.6,6.5 H45 V8.6 H40.9 V11 H44.5 V13.1 H40.9 V15.9 H45.2 V18 H38.6 Z" />
+    </group>
+</vector>

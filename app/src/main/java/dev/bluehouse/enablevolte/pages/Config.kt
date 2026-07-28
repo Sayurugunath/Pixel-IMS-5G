@@ -10,18 +10,23 @@ import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -35,12 +40,14 @@ import dev.bluehouse.enablevolte.CarrierModer
 import dev.bluehouse.enablevolte.R
 import dev.bluehouse.enablevolte.PrivilegeManager
 import dev.bluehouse.enablevolte.PrivilegeMode
+import dev.bluehouse.enablevolte.RootVoWifiStatus
 import dev.bluehouse.enablevolte.ShizukuStatus
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.checkShizukuPermission
 import dev.bluehouse.enablevolte.components.BooleanPropertyView
 import dev.bluehouse.enablevolte.components.ClickablePropertyView
 import dev.bluehouse.enablevolte.components.HeaderText
+import dev.bluehouse.enablevolte.components.GlassSurface
 import dev.bluehouse.enablevolte.components.InfiniteLoadingDialog
 import dev.bluehouse.enablevolte.components.RadioSelectPropertyView
 import dev.bluehouse.enablevolte.components.UserAgentPropertyView
@@ -89,6 +96,8 @@ fun Config(
     var configurableItems by rememberSaveable { mutableStateOf<Map<String, String>>(mapOf()) }
     var reversedConfigurableItems by rememberSaveable { mutableStateOf<Map<String, String>>(mapOf()) }
     var loading by rememberSaveable { mutableStateOf(true) }
+    var rootVoWifiStatus by remember { mutableStateOf<RootVoWifiStatus?>(null) }
+    var rootVoWifiBusy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val simSlotIndex = moder.simSlotIndex
 
@@ -143,6 +152,11 @@ fun Config(
                         withContext(Dispatchers.Default) {
                             loadFlags()
                             loading = false
+                        }
+                        if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+                            rootVoWifiStatus = withContext(Dispatchers.IO) {
+                                PrivilegeManager.getRootVoWifiStatus(subId)
+                            }
                         }
                         true
                     } catch (e: IllegalStateException) {
@@ -291,6 +305,121 @@ fun Config(
                         moder.restartIMSRegistration()
                         true
                     }
+            }
+            if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+                HeaderText(text = stringResource(R.string.root_vowifi_repair_title))
+                GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(18.dp)) {
+                        Text(
+                            text = if (rootVoWifiStatus?.isVoWifiActive == true) {
+                                stringResource(R.string.root_vowifi_active)
+                            } else {
+                                stringResource(R.string.root_vowifi_not_active)
+                            },
+                            color = if (rootVoWifiStatus?.isVoWifiActive == true) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        rootVoWifiStatus?.let { status ->
+                            Text(
+                                stringResource(
+                                    R.string.root_vowifi_status,
+                                    if (status.settingEnabled) "Enabled" else "Disabled",
+                                    status.modeLabel,
+                                    status.registrationLabel,
+                                    status.transportLabel,
+                                    if (status.wifiState == 3) "On" else "Off",
+                                ),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            if (status.message.isNotBlank()) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    status.message,
+                                    color = if (status.operationSucceeded) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            if (status.failureReason.isNotBlank() && !status.isVoWifiActive) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    status.failureReason,
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        } ?: Text(stringResource(R.string.root_vowifi_reading))
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            stringResource(R.string.root_vowifi_limit),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        if (rootVoWifiBusy) {
+                            CircularProgressIndicator()
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Button(
+                                    onClick = {
+                                        rootVoWifiBusy = true
+                                        scope.launch {
+                                            rootVoWifiStatus = withContext(Dispatchers.IO) {
+                                                moder.applyRootVoWifiRepair()
+                                            }
+                                            rootVoWifiBusy = false
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(stringResource(R.string.root_vowifi_apply))
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        rootVoWifiBusy = true
+                                        scope.launch {
+                                            rootVoWifiStatus = withContext(Dispatchers.IO) {
+                                                PrivilegeManager.getRootVoWifiStatus(subId)
+                                            }
+                                            rootVoWifiBusy = false
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                ) {
+                                    Text(stringResource(R.string.refresh))
+                                }
+                            }
+                            if (rootVoWifiStatus?.snapshotAvailable == true) {
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        rootVoWifiBusy = true
+                                        scope.launch {
+                                            rootVoWifiStatus = withContext(Dispatchers.IO) {
+                                                moder.restoreRootVoWifiRepair()
+                                            }
+                                            rootVoWifiBusy = false
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(stringResource(R.string.root_vowifi_restore))
+                                }
+                            }
+                        }
+                    }
+                }
             }
             if (VERSION.SDK_INT >= VERSION_CODES.Q) {
                 BooleanPropertyView(

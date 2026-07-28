@@ -68,6 +68,14 @@
     <string name="cosmetic_toggles">Cosmetic Toggles</string>
     <string name="show_4g_for_lte_data_icon">Show 4G for LTE Data Icon</string>
     <string name="show_vowifi_icon">Show VoWiFI Icon</string>
+    <string name="root_vowifi_repair_title">Root VoWiFi repair</string>
+    <string name="root_vowifi_active">VoWiFi active over IWLAN</string>
+    <string name="root_vowifi_not_active">VoWiFi is not active over IWLAN</string>
+    <string name="root_vowifi_status">User setting: %1$s\nMode: %2$s\nIMS: %3$s\nTransport: %4$s\nWi-Fi: %5$s</string>
+    <string name="root_vowifi_reading">Reading the subscription IMS state…</string>
+    <string name="root_vowifi_apply">Repair VoWiFi</string>
+    <string name="root_vowifi_restore">Restore pre-repair settings</string>
+    <string name="root_vowifi_limit">This enables the real subscription setting, selects Wi-Fi preferred, opens the Android carrier flags, and restarts IMS. A green result requires IMS to register through IWLAN. Root cannot manufacture carrier provisioning, valid ePDG credentials, or carrier server access.</string>
     <string name="always_show_data_icon">Always Show Data RAT Icon</string>
     <string name="hide_enhanced_data_icon">Hide Enhanced Data Icon</string>
     <string name="enable_enhanced_4g_lte_plus">Enable Enhanced 4G LTE (LTE+)</string>
@@ -376,6 +384,9 @@
     <string name="allow_notifications">Allow notifications</string>
     <string name="not_now">Not now</string>
     <string name="update_notification_settings">Update notification settings</string>
+    <string name="status_bar_indicators">Status-bar indicators</string>
+    <string name="status_bar_indicators_toggle">Show live VoLTE and VoWiFi icons</string>
+    <string name="status_bar_indicators_description">Root only. VoLTE appears in the right-side SystemUI area only while IMS is registered over LTE or NR. VoWiFi appears there only while IMS is registered over IWLAN. No ongoing notification is used.</string>
     <string name="download_preparing">Preparing download…</string>
     <string name="download_waiting">Waiting for network…</string>
     <string name="download_progress">Downloading update: %1$d%%</string>

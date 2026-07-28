@@ -82,6 +82,42 @@ object PrivilegeManager {
     fun scheduleRegionalModemPatchRemoval(): RegionalModemPatchStatus =
         rootRegionalPatchCall { it.scheduleRegionalModemPatchRemoval() }
 
+    fun getRootVoWifiStatus(subscriptionId: Int): RootVoWifiStatus =
+        rootVoWifiCall(subscriptionId) { it.getRootVoWifiStatus(subscriptionId) }
+
+    fun applyRootVoWifiRepair(subscriptionId: Int): RootVoWifiStatus =
+        rootVoWifiCall(subscriptionId) { it.applyRootVoWifiRepair(subscriptionId) }
+
+    fun restoreRootVoWifiRepair(subscriptionId: Int): RootVoWifiStatus =
+        rootVoWifiCall(subscriptionId) { it.restoreRootVoWifiRepair(subscriptionId) }
+
+    fun setRootImsStatusBarMonitoring(
+        enabled: Boolean,
+        subscriptionIds: IntArray,
+    ): Boolean =
+        activeMode == PrivilegeMode.ROOT &&
+            isRootReady() &&
+            runCatching {
+                rootBridge?.setImsStatusBarMonitoring(enabled, subscriptionIds) == true
+            }.onFailure {
+                Log.w(TAG, "Unable to update root IMS status-bar monitoring", it)
+            }.getOrDefault(false)
+
+    private fun rootVoWifiCall(
+        subscriptionId: Int,
+        call: (IPrivilegedService) -> String,
+    ): RootVoWifiStatus {
+        if (activeMode != PrivilegeMode.ROOT || !isRootReady()) {
+            return RootVoWifiStatus.unavailable(subscriptionId, "Root mode is required.")
+        }
+        return runCatching {
+            RootVoWifiStatus.fromJson(call(requireNotNull(rootBridge)))
+        }.getOrElse {
+            Log.w(TAG, "Root VoWiFi operation failed", it)
+            RootVoWifiStatus.unavailable(subscriptionId, it.message ?: "Root service operation failed.")
+        }
+    }
+
     private fun rootRegionalPatchCall(call: (IPrivilegedService) -> String): RegionalModemPatchStatus {
         if (activeMode != PrivilegeMode.ROOT || !isRootReady()) {
             return RegionalModemPatchStatus.unavailable("Root mode is required.")

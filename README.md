@@ -4,11 +4,26 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current public release: `1.0.4 rev` (`v1.0.4r`). The one-time uninstall/reinstall notice applies specifically
+Current public release: `1.0.5` (`v1.0.5`). This is a **small update** focused on
+the VoLTE fix, live IMS status indicators, and Root VoWiFi diagnostics. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
 
 ## Changelog
+
+### [1.0.5](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.5) — small update
+
+- Added the **VoLTE Fix**: Root mode now displays a compact boxed VoLTE badge
+  in Android's right-side status area only while IMS is registered over LTE or
+  NR.
+- Added a separate live VoWiFi indicator that appears only for real IMS over
+  IWLAN. Neither indicator creates an ongoing notification.
+- Added a reversible, per-SIM **Root VoWiFi repair** that opens Android WFC
+  gates, selects Wi-Fi preferred, restarts IMS, and reads the result back.
+- Added actionable VoWiFi diagnostics for missing IMS data profiles, ePDG
+  timeouts, DNS failures, and carrier IKE authentication rejection.
+- Expanded field reports with the effective VoWiFi setting, IMS transport,
+  IWLAN state, Wi-Fi state, and sanitized recent failure evidence.
 
 ### [1.0.4 rev](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.4r)
 
@@ -98,22 +113,23 @@ can update normally to later versions.
 
 > **Upgrade note:** version `0.12.6` changed the application ID to
 > `com.nirmala.pixel5gims`, so users of the older package had to uninstall it
-> once. Updates from `0.12.6` onward, including `1.0.4`, install normally.
+> once. Updates from `0.12.6` onward, including `1.0.5`, install normally.
 
-## Version 1.0.2r interface
+## Version 1.0.5 interface
 
-The app is now split into four purpose-built areas so IMS/5G controls and band
-selection are easy to find:
+Version 1.0.5 keeps the four focused Home, Controls, Monitor, and Field Test
+areas, while adding live right-side VoLTE/VoWiFi indicators and a reversible
+Root VoWiFi repair:
 
-| Home | Controls |
+| What's new | Home with live VoLTE |
 | --- | --- |
-| ![Pixel IMS 5G 1.0.2r Home page](docs/screenshots/pixel-ims-1.0.2r-home.png) | ![Pixel IMS 5G 1.0.2r Controls page](docs/screenshots/pixel-ims-1.0.2r-controls.png) |
-| **Field Test** | **Aggressive 5G test** |
-| ![Pixel IMS 5G 1.0.2r Field Test page](docs/screenshots/pixel-ims-1.0.2r-field-test.png) | ![Pixel IMS 5G 1.0.2r Aggressive 5G test confirmation](docs/screenshots/pixel-ims-1.0.2r-aggressive-5g.png) |
+| ![Pixel IMS 5G 1.0.5 liquid-glass changelog](docs/screenshots/pixel-ims-1.0.5-whats-new.png) | ![Pixel IMS 5G 1.0.5 Home with boxed VoLTE status icon](docs/screenshots/pixel-ims-1.0.5-home.png) |
+| **Controls** | **Root VoWiFi repair** |
+| ![Pixel IMS 5G 1.0.5 Controls page](docs/screenshots/pixel-ims-1.0.5-controls.png) | ![Pixel IMS 5G 1.0.5 Root VoWiFi repair](docs/screenshots/pixel-ims-1.0.5-root-vowifi.png) |
 
-The complete safety workflow is also available inside the app:
+The indicator switch and its Root-only behavior are documented inside About:
 
-![Pixel IMS 5G 1.0.2r How to use guide](docs/screenshots/pixel-ims-1.0.2r-how-to.png)
+![Pixel IMS 5G 1.0.5 status-bar indicator setting](docs/screenshots/pixel-ims-1.0.5-about-status-icons.png)
 
 ## How to use
 
@@ -192,6 +208,10 @@ carrier policy all affect whether 5G attaches and how fast it runs.
 ## Features
 
 - Enable VoLTE, VoNR, VoWiFi, NSA and SA carrier configuration.
+- In Root mode, display live VoLTE and VoWiFi indicators in Android's
+  right-side SystemUI status area without an ongoing notification.
+- Apply and restore a per-SIM Root VoWiFi repair, verify the real IMS
+  registration transport, and explain common carrier/ePDG blockers.
 - Apply NSA/LTE+NR preference or experimental SA/NR-only mode.
 - Show live serving radio, LTE/NR bands, NR advertisement and EN-DC eligibility.
 - Actively refresh cell measurements and infer omitted bands from EARFCN/NR-ARFCN.

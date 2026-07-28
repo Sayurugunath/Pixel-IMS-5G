@@ -13,8 +13,8 @@ android {
         // Every Tensor Pixel (Pixel 6 and newer) launched on Android 12 / API 31 or later.
         minSdk 31
         targetSdk 36
-        versionCode 24
-        versionName "1.0.4r"
+        versionCode 25
+        versionName "1.0.5"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

@@ -13,4 +13,8 @@ interface IPrivilegedService {
     String scheduleRegionalModemPatchRemoval();
     int getWifiEnabledState();
     boolean setWifiEnabled(boolean enabled);
+    String getRootVoWifiStatus(int subscriptionId);
+    String applyRootVoWifiRepair(int subscriptionId);
+    String restoreRootVoWifiRepair(int subscriptionId);
+    boolean setImsStatusBarMonitoring(boolean enabled, in int[] subscriptionIds);
 }

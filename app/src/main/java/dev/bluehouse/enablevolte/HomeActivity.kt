@@ -171,16 +171,17 @@ class HomeActivity : ComponentActivity() {
             return
         }
         val prefs = getSharedPreferences("github_updater", MODE_PRIVATE)
-        if (prefs.getBoolean("notification_permission_asked", false)) return
+        val permissionPromptKey = "notification_permission_asked"
+        if (prefs.getBoolean(permissionPromptKey, false)) return
         android.app.AlertDialog.Builder(this)
             .setTitle(R.string.update_notification_permission_title)
             .setMessage(R.string.update_notification_permission_message)
             .setPositiveButton(R.string.allow_notifications) { _, _ ->
-                prefs.edit().putBoolean("notification_permission_asked", true).apply()
+                prefs.edit().putBoolean(permissionPromptKey, true).apply()
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
             .setNegativeButton(R.string.not_now) { _, _ ->
-                prefs.edit().putBoolean("notification_permission_asked", true).apply()
+                prefs.edit().putBoolean(permissionPromptKey, true).apply()
             }
             .show()
     }
@@ -312,6 +313,18 @@ fun PixelIMSApp(
     OnLifecycleEvent { _, event ->
         if (event == Lifecycle.Event.ON_CREATE) {
             loadApplication()
+        }
+    }
+    LaunchedEffect(subscriptions, selectedPrivilegeMode) {
+        if (
+            subscriptions.isNotEmpty() &&
+            selectedPrivilegeMode == PrivilegeMode.ROOT.name &&
+            PrivilegeManager.isRootReady()
+        ) {
+            ImsStatusBarController.apply(
+                enabled = ImsStatusBarController.isEnabled(context),
+                subscriptionIds = subscriptions.map { it.subscriptionId }.toIntArray(),
+            )
         }
     }
     if (selectedPrivilegeMode == null || privilegeError != null) {

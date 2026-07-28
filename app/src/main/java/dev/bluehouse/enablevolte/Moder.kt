@@ -231,6 +231,7 @@ class SubscriptionModer(
         private const val ROOT_FORCE_LTE_BANDS_PREFIX = "root_force_lte_bands_"
         private const val ROOT_FORCE_NR_BANDS_PREFIX = "root_force_nr_bands_"
         private const val ROOT_FORCE_PROPERTY_PREFIX = "root_force_property_"
+        private const val ROOT_VOWIFI_CONFIG_SNAPSHOT_PREFIX = "root_vowifi_config_snapshot_"
         private const val OEM_RIL_SERVICE = "telephony.oem.oemrilhook"
         private const val OEM_RIL_DESCRIPTOR = "com.samsung.slsi.telephony.oem.oemrilhook.IOemRilHook"
         private const val OEM_RIL_GET_RADIO_NODE = 1
@@ -1226,6 +1227,91 @@ class SubscriptionModer(
             restartIMSRegistration()
             true
         }.onFailure { Log.e(TAG, "Unable to apply compatibility profile", it) }.getOrDefault(false)
+
+    /**
+     * Opens the Android-side WFC gates, then asks the UID-0 service to update the subscription's
+     * real ImsMmTelManager user setting. Carrier entitlement and ePDG authentication remain
+     * network-controlled and are reported by the read-back status instead of being misrepresented.
+     */
+    fun applyRootVoWifiRepair(): RootVoWifiStatus {
+        check(PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+            "Root mode is required for the VoWiFi repair."
+        }
+        val prefs = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+        val snapshotKey = ROOT_VOWIFI_CONFIG_SNAPSHOT_PREFIX + subscriptionId
+        if (!prefs.contains(snapshotKey)) {
+            prefs.edit().putString(
+                snapshotKey,
+                org.json.JSONObject()
+                    .put("available", getBooleanValue(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL))
+                    .put("defaultEnabled", getBooleanValue(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ENABLED_BOOL))
+                    .put("defaultMode", getIntValue(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_MODE_INT))
+                    .put("defaultRoamingMode", getIntValue(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ROAMING_MODE_INT))
+                    .put("editableMode", getBooleanValue(CarrierConfigManager.KEY_EDITABLE_WFC_MODE_BOOL))
+                    .put("editableRoamingMode", getBooleanValue(CarrierConfigManager.KEY_EDITABLE_WFC_ROAMING_MODE_BOOL))
+                    .put("showIcon", getBooleanValue(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL))
+                    .put("wifiOnly", getBooleanValue(CarrierConfigManager.KEY_CARRIER_WFC_SUPPORTS_WIFI_ONLY_BOOL))
+                    .toString(),
+            ).apply()
+        }
+        publishBundle {
+            it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL, true)
+            it.putBoolean(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ENABLED_BOOL, true)
+            it.putInt(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_MODE_INT, 2)
+            it.putInt(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ROAMING_MODE_INT, 2)
+            it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_MODE_BOOL, true)
+            it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_ROAMING_MODE_BOOL, true)
+            it.putBoolean(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL, true)
+            it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_SUPPORTS_WIFI_ONLY_BOOL, true)
+        }
+        ROOT_FORCE_PROPERTIES.forEach { (name, value) ->
+            if (name.contains("ims") || name.contains("wfc") || name.contains("volte")) {
+                PrivilegeManager.setRootSystemProperty(name, value)
+            }
+        }
+        val status = PrivilegeManager.applyRootVoWifiRepair(subscriptionId)
+        runCatching { restartIMSRegistration() }
+        return status
+    }
+
+    fun restoreRootVoWifiRepair(): RootVoWifiStatus {
+        check(PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+            "Root mode is required for the VoWiFi restore."
+        }
+        val status = PrivilegeManager.restoreRootVoWifiRepair(subscriptionId)
+        if (status.operationSucceeded) {
+            val prefs = context.getSharedPreferences(NETWORK_PREFS, Context.MODE_PRIVATE)
+            val snapshotKey = ROOT_VOWIFI_CONFIG_SNAPSHOT_PREFIX + subscriptionId
+            prefs.getString(snapshotKey, null)?.let { raw ->
+                val original = org.json.JSONObject(raw)
+                publishBundle {
+                    it.putBoolean(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL, original.optBoolean("available"))
+                    it.putBoolean(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ENABLED_BOOL, original.optBoolean("defaultEnabled"))
+                    it.putInt(CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_MODE_INT, original.optInt("defaultMode"))
+                    it.putInt(
+                        CarrierConfigManager.KEY_CARRIER_DEFAULT_WFC_IMS_ROAMING_MODE_INT,
+                        original.optInt("defaultRoamingMode"),
+                    )
+                    it.putBoolean(CarrierConfigManager.KEY_EDITABLE_WFC_MODE_BOOL, original.optBoolean("editableMode"))
+                    it.putBoolean(
+                        CarrierConfigManager.KEY_EDITABLE_WFC_ROAMING_MODE_BOOL,
+                        original.optBoolean("editableRoamingMode"),
+                    )
+                    it.putBoolean(
+                        CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL,
+                        original.optBoolean("showIcon"),
+                    )
+                    it.putBoolean(
+                        CarrierConfigManager.KEY_CARRIER_WFC_SUPPORTS_WIFI_ONLY_BOOL,
+                        original.optBoolean("wifiOnly"),
+                    )
+                }
+                prefs.edit().remove(snapshotKey).apply()
+            }
+            runCatching { restartIMSRegistration() }
+        }
+        return status
+    }
 
     /**
      * Applies the strongest reversible regional 5G profile available to the Shizuku shell UID.
