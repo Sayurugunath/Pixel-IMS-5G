@@ -21,6 +21,38 @@ data class InstalledChangelog(
 object ReleaseChangelogCatalog {
     fun forVersion(version: String): InstalledChangelog? =
         when (version.removePrefix("v")) {
+            "1.0.5" ->
+                InstalledChangelog(
+                    version = "1.0.5",
+                    items =
+                        listOf(
+                            ChangelogItem(
+                                title = "VoLTE Fix",
+                                detail = "Root mode can now show a live boxed VoLTE badge in Android’s right-side status area while IMS is registered over LTE or NR. The icon disappears when cellular IMS disconnects.",
+                                tone = ChangelogTone.FIX,
+                            ),
+                            ChangelogItem(
+                                title = "Live VoWiFi indicator",
+                                detail = "A separate right-side VoWiFi icon appears only when IMS is genuinely registered through IWLAN. These indicators do not create an ongoing notification.",
+                                tone = ChangelogTone.FEATURE,
+                            ),
+                            ChangelogItem(
+                                title = "Root VoWiFi repair",
+                                detail = "A reversible per-SIM repair opens the Android WFC gates, selects Wi-Fi preferred, restarts IMS, and reports carrier ePDG, profile, DNS, or authentication blockers honestly.",
+                                tone = ChangelogTone.IMPROVEMENT,
+                            ),
+                            ChangelogItem(
+                                title = "Deeper IMS reports",
+                                detail = "Field reports now include the effective VoWiFi setting, IMS registration transport, IWLAN state, Wi-Fi state, and sanitized recent failure evidence.",
+                                tone = ChangelogTone.IMPROVEMENT,
+                            ),
+                            ChangelogItem(
+                                title = "Small update",
+                                detail = "This release focuses on VoLTE and VoWiFi visibility and diagnostics. It does not change the regional 5G modem patch or bypass carrier IMS provisioning.",
+                                tone = ChangelogTone.IMPORTANT,
+                            ),
+                        ),
+                )
             "1.0.4r" ->
                 InstalledChangelog(
                     version = "1.0.4 rev",

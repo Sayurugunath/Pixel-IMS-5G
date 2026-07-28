@@ -310,6 +310,12 @@ object FieldTestReporter {
             } else {
                 null
             }
+        val rootVoWifi =
+            if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+                PrivilegeManager.getRootVoWifiStatus(subscription.subscriptionId)
+            } else {
+                null
+            }
         val testStart = formatWallTime(startedAtWall)
         val testEnd = formatWallTime(finishedAtWall)
         val servingSignal = radios.flatMap { radio ->
@@ -445,6 +451,18 @@ object FieldTestReporter {
                         "patched-sha256=${regionalPatch?.patchedSha256?.ifBlank { "not recorded" }}",
                 )
                 appendLine("  status=${regionalPatch?.message}")
+                appendLine("Root VoWiFi state:")
+                appendLine(
+                    "  setting=${rootVoWifi?.settingEnabled}; roaming=${rootVoWifi?.roamingEnabled}; " +
+                        "mode=${rootVoWifi?.modeLabel}; roaming-mode=${rootVoWifi?.roamingModeLabel}",
+                )
+                appendLine(
+                    "  IMS=${rootVoWifi?.registrationLabel}; transport=${rootVoWifi?.transportLabel}; " +
+                        "active-IWLAN=${rootVoWifi?.isVoWifiActive}; Wi-Fi-state=${rootVoWifi?.wifiState}",
+                )
+                if (!rootVoWifi?.failureReason.isNullOrBlank()) {
+                    appendLine("  recent modem-wide failure=${rootVoWifi?.failureReason}")
+                }
             }
             appendLine()
             appendLine("TWO-MINUTE OBSERVATION")

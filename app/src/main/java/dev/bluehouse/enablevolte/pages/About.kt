@@ -37,10 +37,14 @@ import androidx.compose.ui.unit.dp
 import dev.bluehouse.enablevolte.BuildConfig
 import dev.bluehouse.enablevolte.R
 import dev.bluehouse.enablevolte.PrivilegeManager
+import dev.bluehouse.enablevolte.ImsStatusBarController
+import dev.bluehouse.enablevolte.CarrierModer
+import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.ReleaseInfo
 import dev.bluehouse.enablevolte.UpdateManager
 import dev.bluehouse.enablevolte.UpdateDownloadProgress
 import dev.bluehouse.enablevolte.components.ClickablePropertyView
+import dev.bluehouse.enablevolte.components.BooleanPropertyView
 import dev.bluehouse.enablevolte.components.HeaderText
 import dev.bluehouse.enablevolte.components.WhatsNewDialog
 import kotlinx.coroutines.Dispatchers
@@ -63,6 +67,9 @@ fun About() {
     var downloadId by rememberSaveable { mutableStateOf(UpdateManager.activeDownloadId(context)) }
     var downloadProgress by remember { mutableStateOf<UpdateDownloadProgress?>(null) }
     var showCurrentChangelog by rememberSaveable { mutableStateOf(false) }
+    var statusIndicatorsEnabled by rememberSaveable {
+        mutableStateOf(ImsStatusBarController.isEnabled(context))
+    }
     val currentChangelog = remember { UpdateManager.currentChangelog(context) }
 
     fun checkUpdates() {
@@ -125,6 +132,26 @@ fun About() {
             Icon(Icons.Filled.Settings, contentDescription = null)
             Text(" ${stringResource(R.string.change_access_mode)}")
         }
+
+        HeaderText(stringResource(R.string.status_bar_indicators))
+        BooleanPropertyView(
+            label = stringResource(R.string.status_bar_indicators_toggle),
+            toggled = statusIndicatorsEnabled,
+        ) {
+            statusIndicatorsEnabled = !statusIndicatorsEnabled
+            val subscriptionIds =
+                if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+                    runCatching {
+                        CarrierModer(context).subscriptions.map { subscription ->
+                            subscription.subscriptionId
+                        }.toIntArray()
+                    }.getOrDefault(intArrayOf())
+                } else {
+                    intArrayOf()
+                }
+            ImsStatusBarController.setEnabled(context, statusIndicatorsEnabled, subscriptionIds)
+        }
+        Text(stringResource(R.string.status_bar_indicators_description))
 
         HeaderText(stringResource(R.string.developer))
         ClickablePropertyView(

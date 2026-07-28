@@ -1,6 +1,8 @@
 package dev.bluehouse.enablevolte
 
+import android.annotation.SuppressLint
 import android.content.Intent
+import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.net.wifi.IWifiManager
 import android.os.Binder
@@ -9,12 +11,22 @@ import android.os.IBinder
 import android.os.Parcel
 import android.os.Process
 import android.os.ServiceManager
+import android.telephony.ims.ImsMmTelManager
 import android.util.Log
+import com.android.internal.statusbar.IStatusBarService
+import com.android.internal.telephony.ITelephony
 import com.topjohnwu.superuser.ipc.RootService
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.function.Consumer
 
 /**
  * Minimal root-side Binder bridge. Calls are forwarded from UID 0 so system_server sees root as
@@ -22,6 +34,10 @@ import java.util.concurrent.ConcurrentHashMap
  */
 class PrivilegedService : RootService() {
     private val forwardedServices = ConcurrentHashMap<String, IBinder>()
+    private val iconMonitorLock = Any()
+    private var iconMonitor: ScheduledExecutorService? = null
+    @Volatile
+    private var monitoredSubscriptionIds = intArrayOf()
 
     private val binder = object : IPrivilegedService.Stub() {
         override fun getSystemService(name: String): IBinder? {
@@ -96,9 +112,218 @@ class PrivilegedService : RootService() {
             IWifiManager.Stub.asInterface(
                 ServiceManager.getService("wifi") ?: error("Wi-Fi service is unavailable"),
             ).setWifiEnabled("com.android.shell", enabled)
+
+        override fun getRootVoWifiStatus(subscriptionId: Int): String =
+            readRootVoWifiStatus(subscriptionId).toString()
+
+        override fun applyRootVoWifiRepair(subscriptionId: Int): String =
+            runCatching {
+                validateSubscriptionId(subscriptionId)
+                val before = readRootVoWifiStatus(subscriptionId)
+                check(before.optBoolean("available")) {
+                    before.optString("message", "Unable to read the IMS Wi-Fi calling service.")
+                }
+                val snapshot = voWifiSnapshotFile(subscriptionId)
+                if (!snapshot.isFile) {
+                    snapshot.parentFile?.let { parent ->
+                        check(parent.mkdirs() || parent.isDirectory) { "Unable to create the VoWiFi snapshot directory." }
+                    }
+                    snapshot.writeText(
+                        JSONObject()
+                            .put("settingEnabled", before.optBoolean("settingEnabled"))
+                            .put("roamingEnabled", before.optBoolean("roamingEnabled"))
+                            .put("mode", before.optInt("mode", -1))
+                            .put("roamingMode", before.optInt("roamingMode", -1))
+                            .toString(),
+                    )
+                }
+
+                val manager = ImsMmTelManager.createForSubscriptionId(subscriptionId)
+                invokeImsSetter(manager, "setVoWiFiSettingEnabled", true)
+                invokeImsSetter(manager, "setVoWiFiRoamingSettingEnabled", true)
+                invokeImsSetter(manager, "setVoWiFiModeSetting", WIFI_MODE_WIFI_PREFERRED)
+                invokeImsSetter(manager, "setVoWiFiRoamingModeSetting", WIFI_MODE_WIFI_PREFERRED)
+
+                readRootVoWifiStatus(
+                    subscriptionId,
+                    operationSucceeded = true,
+                    message = "VoWiFi is enabled and Wi-Fi preferred. Connect to Wi-Fi and refresh to verify IWLAN.",
+                ).toString()
+            }.getOrElse {
+                Log.e(TAG, "Root VoWiFi repair failed", it)
+                readRootVoWifiStatus(
+                    subscriptionId,
+                    operationSucceeded = false,
+                    message = it.message ?: "Root VoWiFi repair failed.",
+                ).toString()
+            }
+
+        override fun restoreRootVoWifiRepair(subscriptionId: Int): String =
+            runCatching {
+                validateSubscriptionId(subscriptionId)
+                val snapshot = voWifiSnapshotFile(subscriptionId)
+                check(snapshot.isFile) { "No pre-repair VoWiFi snapshot is available for this SIM." }
+                val original = JSONObject(snapshot.readText())
+                val manager = ImsMmTelManager.createForSubscriptionId(subscriptionId)
+                invokeImsSetter(manager, "setVoWiFiSettingEnabled", original.optBoolean("settingEnabled"))
+                invokeImsSetter(manager, "setVoWiFiRoamingSettingEnabled", original.optBoolean("roamingEnabled"))
+                original.optInt("mode", -1).takeIf { it >= 0 }?.let {
+                    invokeImsSetter(manager, "setVoWiFiModeSetting", it)
+                }
+                original.optInt("roamingMode", -1).takeIf { it >= 0 }?.let {
+                    invokeImsSetter(manager, "setVoWiFiRoamingModeSetting", it)
+                }
+                check(snapshot.delete()) { "Settings were restored, but the snapshot could not be removed." }
+                readRootVoWifiStatus(
+                    subscriptionId,
+                    operationSucceeded = true,
+                    message = "The pre-repair VoWiFi user settings were restored.",
+                ).toString()
+            }.getOrElse {
+                Log.e(TAG, "Root VoWiFi restore failed", it)
+                readRootVoWifiStatus(
+                    subscriptionId,
+                    operationSucceeded = false,
+                    message = it.message ?: "Root VoWiFi restore failed.",
+                ).toString()
+            }
+
+        override fun setImsStatusBarMonitoring(
+            enabled: Boolean,
+            subscriptionIds: IntArray,
+        ): Boolean =
+            runCatching {
+                subscriptionIds.forEach(::validateSubscriptionId)
+                synchronized(iconMonitorLock) {
+                    monitoredSubscriptionIds = subscriptionIds.distinct().toIntArray()
+                    Log.i(
+                        TAG,
+                        "IMS status-bar monitor enabled=$enabled subscriptions=${monitoredSubscriptionIds.contentToString()}",
+                    )
+                    if (!enabled || monitoredSubscriptionIds.isEmpty()) {
+                        iconMonitor?.shutdownNow()
+                        iconMonitor = null
+                        clearImsStatusBarIcons()
+                    } else {
+                        if (iconMonitor?.isShutdown != false) {
+                            iconMonitor = Executors.newSingleThreadScheduledExecutor().apply {
+                                scheduleWithFixedDelay(
+                                    { updateImsStatusBarIcons() },
+                                    0,
+                                    STATUS_ICON_POLL_SECONDS,
+                                    TimeUnit.SECONDS,
+                                )
+                            }
+                        } else {
+                            updateImsStatusBarIcons()
+                        }
+                    }
+                }
+                true
+            }.onFailure {
+                Log.e(TAG, "Unable to configure IMS status-bar monitor", it)
+            }.getOrDefault(false)
     }
 
-    override fun onBind(intent: Intent): IBinder = binder
+    override fun onBind(intent: Intent): IBinder {
+        HiddenApiBypass.addHiddenApiExemptions(
+            "Landroid/telephony/",
+            "Landroid/telephony/ims/",
+            "Landroid/os/TelephonyServiceManager",
+        )
+        runCatching { bootstrapTelephonyFramework() }
+            .onFailure { Log.w(TAG, "Unable to bootstrap the root telephony framework", it) }
+        // RootService runs in a fresh app_process where the telephony framework registerers are
+        // not necessarily bootstrapped yet. Resolve both services before ImsMmTelManager is used.
+        getSystemService(Context.TELEPHONY_SERVICE)
+        getSystemService(Context.TELEPHONY_IMS_SERVICE)
+        return binder
+    }
+
+    override fun onDestroy() {
+        synchronized(iconMonitorLock) {
+            iconMonitor?.shutdownNow()
+            iconMonitor = null
+            clearImsStatusBarIcons()
+        }
+        super.onDestroy()
+    }
+
+    private fun updateImsStatusBarIcons() {
+        val subscriptions = monitoredSubscriptionIds
+        if (subscriptions.isEmpty()) {
+            clearImsStatusBarIcons()
+            return
+        }
+        val phone = ITelephony.Stub.asInterface(
+            ServiceManager.getService(Context.TELEPHONY_SERVICE)
+                ?: error("Telephony service is unavailable"),
+        )
+        var volteActive = false
+        var vowifiActive = false
+        subscriptions.forEach { subscriptionId ->
+            val registered = runCatching { phone.isImsRegistered(subscriptionId) }.getOrDefault(false)
+            if (!registered) return@forEach
+            val technology = runCatching {
+                phone.getImsRegTechnologyForMmTel(subscriptionId)
+            }.getOrDefault(-1)
+            when (technology) {
+                IMS_REGISTRATION_TECH_LTE,
+                IMS_REGISTRATION_TECH_NR,
+                -> volteActive = true
+                IMS_REGISTRATION_TECH_IWLAN -> vowifiActive = true
+            }
+        }
+        Log.d(TAG, "IMS status-bar state VoLTE=$volteActive VoWiFi=$vowifiActive")
+        val statusBar = statusBarService()
+        updateStatusBarIcon(
+            statusBar = statusBar,
+            slot = STATUS_SLOT_VOLTE,
+            visible = volteActive,
+            drawable = R.drawable.ic_status_volte,
+            description = "VoLTE active",
+        )
+        updateStatusBarIcon(
+            statusBar = statusBar,
+            slot = STATUS_SLOT_VOWIFI,
+            visible = vowifiActive,
+            drawable = R.drawable.ic_status_vowifi,
+            description = "VoWiFi active",
+        )
+    }
+
+    private fun clearImsStatusBarIcons() {
+        runCatching {
+            statusBarService().apply {
+                setIconVisibility(STATUS_SLOT_VOLTE, false)
+                setIconVisibility(STATUS_SLOT_VOWIFI, false)
+                removeIcon(STATUS_SLOT_VOLTE)
+                removeIcon(STATUS_SLOT_VOWIFI)
+            }
+        }.onFailure { Log.w(TAG, "Unable to remove IMS status-bar icons", it) }
+    }
+
+    private fun statusBarService(): IStatusBarService =
+        IStatusBarService.Stub.asInterface(
+            ServiceManager.getService(Context.STATUS_BAR_SERVICE)
+                ?: error("Status-bar service is unavailable"),
+        )
+
+    private fun updateStatusBarIcon(
+        statusBar: IStatusBarService,
+        slot: String,
+        visible: Boolean,
+        drawable: Int,
+        description: String,
+    ) {
+        if (visible) {
+            statusBar.setIcon(slot, packageName, drawable, 0, description)
+            statusBar.setIconVisibility(slot, true)
+        } else {
+            statusBar.setIconVisibility(slot, false)
+            statusBar.removeIcon(slot)
+        }
+    }
 
     private class ForwardingBinder(
         private val target: IBinder,
@@ -110,6 +335,161 @@ class PrivilegedService : RootService() {
     companion object {
         private const val TAG = "PrivilegedService"
         private data class CommandResult(val exitCode: Int, val output: String)
+
+        private const val WIFI_MODE_WIFI_PREFERRED = 2
+        private const val VOWIFI_SNAPSHOT_DIR = "/data/local/tmp/pixelims5g"
+        private const val STATUS_ICON_POLL_SECONDS = 3L
+        private const val STATUS_SLOT_VOLTE = "pixelims_volte"
+        private const val STATUS_SLOT_VOWIFI = "pixelims_vowifi"
+        private const val IMS_REGISTRATION_TECH_LTE = 0
+        private const val IMS_REGISTRATION_TECH_IWLAN = 1
+        private const val IMS_REGISTRATION_TECH_NR = 3
+
+        @SuppressLint("BlockedPrivateApi")
+        private fun bootstrapTelephonyFramework() {
+            val initializer = Class.forName("android.telephony.TelephonyFrameworkInitializer")
+            val getManager = initializer.getDeclaredMethod("getTelephonyServiceManager").apply {
+                isAccessible = true
+            }
+            if (getManager.invoke(null) != null) return
+            val managerClass = Class.forName("android.os.TelephonyServiceManager")
+            val manager = managerClass.getDeclaredConstructor().apply { isAccessible = true }.newInstance()
+            initializer.getDeclaredMethod("setTelephonyServiceManager", managerClass)
+                .apply { isAccessible = true }
+                .invoke(null, manager)
+        }
+
+        private fun validateSubscriptionId(subscriptionId: Int) {
+            require(subscriptionId in 0..9999) { "Invalid subscription ID." }
+        }
+
+        private fun voWifiSnapshotFile(subscriptionId: Int): File {
+            validateSubscriptionId(subscriptionId)
+            return File(VOWIFI_SNAPSHOT_DIR, "vowifi-$subscriptionId.json")
+        }
+
+        private fun invokeImsSetter(manager: ImsMmTelManager, name: String, value: Any) {
+            val parameter = when (value) {
+                is Boolean -> Boolean::class.javaPrimitiveType
+                is Int -> Int::class.javaPrimitiveType
+                else -> error("Unsupported IMS setting type.")
+            }
+            val method = manager.javaClass.getDeclaredMethod(name, parameter).apply { isAccessible = true }
+            method.invoke(manager, value)
+        }
+
+        private fun readRootVoWifiStatus(
+            subscriptionId: Int,
+            operationSucceeded: Boolean = false,
+            message: String = "",
+        ): JSONObject {
+            return runCatching {
+                validateSubscriptionId(subscriptionId)
+                val manager = ImsMmTelManager.createForSubscriptionId(subscriptionId)
+                val registrationState = AtomicInteger(-1)
+                val transportType = AtomicInteger(-1)
+                val latch = CountDownLatch(2)
+                val directExecutor = java.util.concurrent.Executor { command -> command.run() }
+                runCatching {
+                    manager.getRegistrationState(
+                        directExecutor,
+                        Consumer {
+                            registrationState.set(it)
+                            latch.countDown()
+                        },
+                    )
+                }.onFailure { latch.countDown() }
+                runCatching {
+                    manager.getRegistrationTransportType(
+                        directExecutor,
+                        Consumer {
+                            transportType.set(it)
+                            latch.countDown()
+                        },
+                    )
+                }.onFailure { latch.countDown() }
+                latch.await(2, TimeUnit.SECONDS)
+
+                val roamingMode = runCatching {
+                    manager.javaClass.getDeclaredMethod("getVoWiFiRoamingModeSetting")
+                        .apply { isAccessible = true }
+                        .invoke(manager) as Int
+                }.getOrDefault(-1)
+                val wifiState = runCatching {
+                    IWifiManager.Stub.asInterface(
+                        ServiceManager.getService("wifi") ?: error("Wi-Fi service is unavailable"),
+                    ).wifiEnabledState
+                }.getOrDefault(0)
+                JSONObject()
+                    .put("available", true)
+                    .put("subscriptionId", subscriptionId)
+                    .put("settingEnabled", manager.isVoWiFiSettingEnabled)
+                    .put("roamingEnabled", manager.isVoWiFiRoamingSettingEnabled)
+                    .put("mode", manager.voWiFiModeSetting)
+                    .put("roamingMode", roamingMode)
+                    .put("registrationState", registrationState.get())
+                    .put("transportType", transportType.get())
+                    .put("wifiState", wifiState)
+                    .put("snapshotAvailable", voWifiSnapshotFile(subscriptionId).isFile)
+                    .put("operationSucceeded", operationSucceeded)
+                    .put("failureReason", recentVoWifiFailure(subscriptionId))
+                    .put("message", message)
+            }.getOrElse {
+                Log.w(TAG, "Unable to read root VoWiFi status for subId=$subscriptionId", it)
+                JSONObject()
+                    .put("available", false)
+                    .put("subscriptionId", subscriptionId)
+                    .put("settingEnabled", false)
+                    .put("roamingEnabled", false)
+                    .put("mode", -1)
+                    .put("roamingMode", -1)
+                    .put("registrationState", -1)
+                    .put("transportType", -1)
+                    .put("wifiState", 0)
+                    .put("snapshotAvailable", voWifiSnapshotFile(subscriptionId).isFile)
+                    .put("operationSucceeded", false)
+                    .put("failureReason", recentVoWifiFailure(subscriptionId))
+                    .put("message", message.ifBlank { it.message ?: "Unable to read root VoWiFi status." })
+            }
+        }
+
+        private fun recentVoWifiFailure(subscriptionId: Int): String {
+            val radio = runCommand(
+                "/system/bin/logcat",
+                "-b",
+                "radio",
+                "-d",
+                "-v",
+                "brief",
+                "-t",
+                "1800",
+            ).takeIf { it.exitCode == 0 }?.output.orEmpty()
+            val selectedSubHasNoProfile = Regex(
+                "NO_SUITABLE_DATA_PROFILE[\\s\\S]{0,1400}mSubId\\s*=\\s*$subscriptionId\\b",
+                RegexOption.IGNORE_CASE,
+            ).containsMatchIn(radio)
+            return when {
+                selectedSubHasNoProfile ->
+                    "Selected-SIM evidence: Android found no suitable IMS data profile for IWLAN " +
+                        "(NO_SUITABLE_DATA_PROFILE). The user setting is open, but the active carrier " +
+                        "provisioning/APN profile cannot create the VoWiFi IMS bearer."
+                radio.contains("IWLAN_IKE_INIT_TIMEOUT", ignoreCase = true) ->
+                    "Recent modem-wide evidence: ePDG IKE tunnel setup timed out (IWLAN_IKE_INIT_TIMEOUT). " +
+                        "Try another Wi-Fi network, turn off VPN/Private DNS, and confirm the carrier permits VoWiFi. " +
+                        "The app cannot make an unreachable carrier ePDG answer."
+                radio.contains("IWLAN_IKE_AUTH_FAILED", ignoreCase = true) ||
+                    radio.contains("IKE_AUTH_FAILED", ignoreCase = true) ->
+                    "Recent modem-wide evidence: the carrier ePDG rejected IKE authentication. " +
+                        "SIM VoWiFi entitlement or carrier credentials are the likely blocker."
+                radio.contains("IWLAN_DNS_RESOLUTION_NAME_FAILURE", ignoreCase = true) ->
+                    "Recent modem-wide evidence: the carrier ePDG hostname could not be resolved. " +
+                        "Turn off Private DNS/VPN and test a different Wi-Fi network."
+                radio.contains("NO_SUITABLE_DATA_PROFILE", ignoreCase = true) ->
+                    "Recent modem-wide evidence: Android found no suitable IMS profile for IWLAN. " +
+                        "Carrier provisioning or the IMS APN/profile is incomplete."
+                else -> ""
+            }
+        }
 
         private fun runCommand(vararg command: String): CommandResult =
             runCatching {
@@ -357,6 +737,7 @@ class PrivilegedService : RootService() {
             "power",
             "activity",
             "wifi",
+            "statusbar",
             "telephony.oem.oemrilhook",
         )
 
@@ -400,7 +781,8 @@ class PrivilegedService : RootService() {
         )
         private val DIAGNOSTIC_TERMS = Regex(
             "nr|5g|endc|en-dc|dcnr|dual.?connect|scg|secondary.?cell|reject|fail|cause|" +
-                "registration|servicestate|physicalchannel|carrier.?aggregation",
+                "registration|servicestate|physicalchannel|carrier.?aggregation|iwlan|wfc|" +
+                "vowifi|epdg|ike|qns|ims",
             RegexOption.IGNORE_CASE,
         )
         private val LONG_IDENTIFIER = Regex("(?<![A-Za-z])\\+?\\d[\\d -]{8,}\\d")
