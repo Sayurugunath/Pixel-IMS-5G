@@ -56,7 +56,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --generate-notes --title "Pixel IMS 5G $GITHUB_REF_NAME"
+          notes_file=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            if [ -f "$notes_file" ]; then
+              gh release create "$GITHUB_REF_NAME" --notes-file "$notes_file" --title "Pixel IMS 5G $GITHUB_REF_NAME"
+            else
+              gh release create "$GITHUB_REF_NAME" --generate-notes --title "Pixel IMS 5G $GITHUB_REF_NAME"
+            fi
+          fi
           gh release upload "$GITHUB_REF_NAME" "Pixel-IMS-5G-${GITHUB_REF_NAME}.apk" --clobber
 
       - uses: actions/upload-artifact@v4

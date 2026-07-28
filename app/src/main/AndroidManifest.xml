@@ -12,6 +12,12 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <queries>
+        <package android:name="app.grapheneos.apps" />
+        <package android:name="app.vanadium.browser" />
+        <package android:name="app.vanadium.webview" />
+    </queries>
+
     <instrumentation
         android:name="dev.bluehouse.enablevolte.BrokerInstrumentation"
         android:targetPackage="${applicationId}"/>

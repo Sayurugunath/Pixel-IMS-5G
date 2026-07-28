@@ -6,8 +6,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -33,10 +35,13 @@ import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.ShizukuStatus
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.checkShizukuPermission
-import dev.bluehouse.enablevolte.components.BooleanPropertyView
-import dev.bluehouse.enablevolte.components.HeaderText
 import dev.bluehouse.enablevolte.components.GlassSurface
-import dev.bluehouse.enablevolte.components.StringPropertyView
+import dev.bluehouse.enablevolte.components.PremiumActionRow
+import dev.bluehouse.enablevolte.components.PremiumMetric
+import dev.bluehouse.enablevolte.components.PremiumPageIntro
+import dev.bluehouse.enablevolte.components.PremiumSectionLabel
+import dev.bluehouse.enablevolte.components.PremiumStatusChip
+import dev.bluehouse.enablevolte.components.StatusTone
 import dev.bluehouse.enablevolte.uniqueName
 import rikka.shizuku.Shizuku
 import kotlinx.coroutines.Dispatchers
@@ -110,23 +115,94 @@ fun Home(navController: NavController) {
         }
     }
 
-    Column(modifier = Modifier.padding(Dp(16f)).verticalScroll(scrollState)) {
-        HeaderText(text = stringResource(R.string.version))
-        StringPropertyView(label = BuildConfig.VERSION_NAME, value = stringResource(R.string.app_name))
-        HeaderText(text = stringResource(R.string.permissions_capabilities))
-        BooleanPropertyView(label = stringResource(R.string.privileged_service_running), toggled = shizukuEnabled)
-        BooleanPropertyView(label = stringResource(R.string.privileged_access_granted), toggled = shizukuGranted)
-        BooleanPropertyView(label = stringResource(R.string.sim_detected), toggled = subscriptions.isNotEmpty())
-        BooleanPropertyView(label = stringResource(R.string.volte_supported_by_device), toggled = deviceIMSEnabled)
+    Column(
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp).verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        PremiumPageIntro(
+            eyebrow = stringResource(R.string.premium_home_eyebrow),
+            title = stringResource(R.string.premium_home_title),
+            description = stringResource(R.string.premium_home_description),
+        )
 
-        HeaderText(text = stringResource(R.string.how_to_use))
-        Text(stringResource(R.string.how_to_use_summary), modifier = Modifier.padding(bottom = 8.dp))
-        Button(
-            onClick = { navController.navigate("home/how-to") },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.open_how_to_use))
+        PremiumSectionLabel(stringResource(R.string.premium_system_readiness))
+        GlassSurface(Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(stringResource(R.string.app_name), style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "v${BuildConfig.VERSION_NAME}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    PremiumStatusChip(
+                        label = if (shizukuGranted && subscriptions.isNotEmpty()) {
+                            stringResource(R.string.premium_ready)
+                        } else {
+                            stringResource(R.string.premium_attention)
+                        },
+                        tone = if (shizukuGranted && subscriptions.isNotEmpty()) {
+                            StatusTone.SUCCESS
+                        } else {
+                            StatusTone.WARNING
+                        },
+                    )
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    PremiumMetric(
+                        label = stringResource(R.string.premium_access_mode),
+                        value = PrivilegeManager.activeMode.name.lowercase().replaceFirstChar { it.uppercase() },
+                        tone = StatusTone.ACCENT,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PremiumMetric(
+                        label = stringResource(R.string.premium_service),
+                        value = if (shizukuEnabled) {
+                            stringResource(R.string.premium_ready)
+                        } else {
+                            stringResource(R.string.premium_unavailable)
+                        },
+                        tone = if (shizukuEnabled) StatusTone.SUCCESS else StatusTone.DANGER,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(Modifier.fillMaxWidth()) {
+                    PremiumMetric(
+                        label = stringResource(R.string.premium_sim),
+                        value = if (subscriptions.isNotEmpty()) {
+                            "${subscriptions.size} detected"
+                        } else {
+                            stringResource(R.string.premium_unavailable)
+                        },
+                        tone = if (subscriptions.isNotEmpty()) StatusTone.SUCCESS else StatusTone.WARNING,
+                        modifier = Modifier.weight(1f),
+                    )
+                    PremiumMetric(
+                        label = stringResource(R.string.premium_ims),
+                        value = if (deviceIMSEnabled) {
+                            stringResource(R.string.premium_supported)
+                        } else {
+                            stringResource(R.string.premium_unavailable)
+                        },
+                        tone = if (deviceIMSEnabled) StatusTone.SUCCESS else StatusTone.DANGER,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
+
+        PremiumSectionLabel(stringResource(R.string.premium_quick_start))
+        PremiumActionRow(
+            title = stringResource(R.string.open_how_to_use),
+            subtitle = stringResource(R.string.how_to_use_summary),
+            icon = Icons.Filled.MenuBook,
+            onClick = { navController.navigate("home/how-to") },
+        )
 
         for (idx in subscriptions.indices) {
             val subscription = subscriptions[idx]
@@ -134,15 +210,8 @@ fun Home(navController: NavController) {
             if (isIMSRegistered.isNotEmpty()) {
                 isRegistered = isIMSRegistered[idx]
             }
-            HeaderText(text = stringResource(R.string.ims_status_for, subscription.uniqueName))
-            BooleanPropertyView(
-                label = stringResource(R.string.ims_status),
-                toggled = isRegistered,
-                trueLabel = stringResource(R.string.registered),
-                falseLabel = stringResource(R.string.unregistered),
-            )
-            if (!isRegistered && idx < imsIssues.size) {
-                val reason = when (imsIssues[idx]) {
+            val reason = if (!isRegistered && idx < imsIssues.size) {
+                when (imsIssues[idx]) {
                     SubscriptionModer.ImsIssue.NO_CELLULAR_SERVICE -> stringResource(R.string.ims_issue_no_service)
                     SubscriptionModer.ImsIssue.VOLTE_DISABLED_BY_CONFIG -> stringResource(R.string.ims_issue_volte_disabled)
                     SubscriptionModer.ImsIssue.LTE_NR_NOT_ALLOWED -> stringResource(R.string.ims_issue_radio_disabled)
@@ -150,10 +219,35 @@ fun Home(navController: NavController) {
                     SubscriptionModer.ImsIssue.STATUS_UNAVAILABLE -> stringResource(R.string.ims_issue_unknown)
                     else -> stringResource(R.string.registered)
                 }
-                GlassSurface(modifier = Modifier.fillMaxWidth()) {
-                    Column(modifier = Modifier.padding(Dp(16f)), verticalArrangement = Arrangement.spacedBy(Dp(10f))) {
-                        Text(stringResource(R.string.ims_not_available_reason), style = MaterialTheme.typography.titleMedium)
-                        Text(reason)
+            } else {
+                null
+            }
+            GlassSurface(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text(subscription.uniqueName, style = MaterialTheme.typography.titleLarge)
+                            Text(
+                                stringResource(R.string.ims_status),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        PremiumStatusChip(
+                            label = if (isRegistered) {
+                                stringResource(R.string.registered)
+                            } else {
+                                stringResource(R.string.unregistered)
+                            },
+                            tone = if (isRegistered) StatusTone.SUCCESS else StatusTone.DANGER,
+                        )
+                    }
+                    reason?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                         Button(onClick = {
                             scope.launch {
                                 withContext(Dispatchers.IO) {

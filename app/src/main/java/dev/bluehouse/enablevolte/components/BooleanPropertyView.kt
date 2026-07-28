@@ -34,29 +34,37 @@ fun BooleanPropertyView(
     val localEnabled = enabled && Build.VERSION.SDK_INT >= minSdk
 
     if (toggled == null) {
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+        CompactPropertySurface(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
                 Text(text = label, style = MaterialTheme.typography.titleMedium)
-                Text(text = stringResource(R.string.unknown), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = stringResource(R.string.unknown), style = MaterialTheme.typography.bodySmall, color = statusToneColor(StatusTone.WARNING))
             }
         }
         return
     }
     if (onClick != null) {
-        GlassSurface(modifier = Modifier.fillMaxWidth(), onClick = { if (localEnabled) onClick(!toggled) }) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp)) {
+        CompactPropertySurface(modifier = Modifier.fillMaxWidth(), onClick = { if (localEnabled) onClick(!toggled) }) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)) {
                 Column(modifier = Modifier.weight(1F)) {
                     Text(text = label, style = MaterialTheme.typography.titleMedium)
-                    Text(text = if (toggled) trueLabel else falseLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        text = if (toggled) trueLabel else falseLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (toggled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
                 Switch(checked = toggled, enabled = localEnabled, onCheckedChange = onClick)
             }
         }
     } else {
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+        CompactPropertySurface(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
                 Text(text = label, style = MaterialTheme.typography.titleMedium)
-                Text(text = if (toggled) trueLabel else falseLabel, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = if (toggled) trueLabel else falseLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (toggled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

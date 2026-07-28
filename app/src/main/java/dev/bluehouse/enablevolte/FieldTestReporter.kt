@@ -37,9 +37,20 @@ object FieldTestReporter {
     private data class TimedSample(
         val capturedAt: String,
         val elapsedMs: Long,
+        val captureDurationMs: Long,
         val radio: SubscriptionModer.RadioDiagnostics,
-        val physicalChannels: String?,
-        val telephonyRegistry: String?,
+    )
+
+    private data class SampleEvidenceQuality(
+        val selectedRegisteredCells: Int,
+        val foreignRegisteredCells: Int,
+        val channelAgreement: Boolean?,
+        val bandAgreement: Boolean?,
+    )
+
+    private data class PhysicalEvidenceQuality(
+        val entries: Int,
+        val matchingSelectedServingCells: Int,
     )
 
     private class FieldEventCallback(
@@ -79,20 +90,14 @@ object FieldTestReporter {
         context: Context,
         subscription: SubscriptionInfo,
         modeLabel: String = "Standard diagnostic",
+        wifiIsolation: String,
         onProgress: (Int, Int) -> Unit,
     ): FieldTestResult {
         val moder = SubscriptionModer(context, subscription.subscriptionId)
         val samples = mutableListOf<TimedSample>()
         val eventLog = CopyOnWriteArrayList<String>()
-        val startedAt = SystemClock.elapsedRealtime()
         val telephonyManager = context.getSystemService(TelephonyManager::class.java)
             .createForSubscriptionId(subscription.subscriptionId)
-        val callback = FieldEventCallback(startedAt, eventLog)
-        val callbackRegistered = runCatching {
-            withContext(Dispatchers.Main) {
-                telephonyManager.registerTelephonyCallback(context.mainExecutor, callback)
-            }
-        }.isSuccess
         val rootAtStart = withContext(Dispatchers.IO) {
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
                 captureRootEvidence()
@@ -100,34 +105,41 @@ object FieldTestReporter {
                 emptyMap()
             }
         }
+        val startedAtWall = System.currentTimeMillis()
+        val startedAt = SystemClock.elapsedRealtime()
+        val callback = FieldEventCallback(startedAt, eventLog)
+        val callbackRegistered = runCatching {
+            withContext(Dispatchers.Main) {
+                telephonyManager.registerTelephonyCallback(context.mainExecutor, callback)
+            }
+        }.isSuccess
+        var skippedScheduleSlots = 0
         try {
-            repeat(SAMPLE_COUNT) { index ->
+            for (index in 0 until SAMPLE_COUNT) {
+                val scheduledAt = startedAt + index * SAMPLE_INTERVAL_MS
+                val beforeDelay = SystemClock.elapsedRealtime()
+                if (
+                    index > 0 &&
+                    index < SAMPLE_COUNT - 1 &&
+                    beforeDelay >= scheduledAt + SAMPLE_INTERVAL_MS
+                ) {
+                    skippedScheduleSlots += 1
+                    onProgress(index + 1, SAMPLE_COUNT)
+                    continue
+                }
+                delay((scheduledAt - beforeDelay).coerceAtLeast(0L))
                 val captured = withContext(Dispatchers.IO) {
+                    val captureStartedAt = SystemClock.elapsedRealtime()
                     val radio = moder.getRadioDiagnostics()
-                    val rootReady =
-                        PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()
                     TimedSample(
                         capturedAt = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date()),
                         elapsedMs = SystemClock.elapsedRealtime() - startedAt,
+                        captureDurationMs = SystemClock.elapsedRealtime() - captureStartedAt,
                         radio = radio,
-                        physicalChannels = if (rootReady) {
-                            PrivilegeManager.getRootTelephonyDiagnostic("physical")?.take(ROOT_SNAPSHOT_LIMIT)
-                        } else {
-                            null
-                        },
-                        telephonyRegistry = if (rootReady) {
-                            PrivilegeManager.getRootTelephonyDiagnostic("registry")?.take(ROOT_SNAPSHOT_LIMIT)
-                        } else {
-                            null
-                        },
                     )
                 }
                 samples += captured
                 onProgress(index + 1, SAMPLE_COUNT)
-                if (index < SAMPLE_COUNT - 1) {
-                    val nextSampleAt = startedAt + (index + 1L) * SAMPLE_INTERVAL_MS
-                    delay((nextSampleAt - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
-                }
             }
         } finally {
             if (callbackRegistered) {
@@ -136,6 +148,7 @@ object FieldTestReporter {
                 }
             }
         }
+        val finishedAtWall = System.currentTimeMillis()
 
         val rootAtEnd = withContext(Dispatchers.IO) {
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
@@ -155,6 +168,10 @@ object FieldTestReporter {
                 rootAtStart,
                 rootAtEnd,
                 modeLabel,
+                wifiIsolation,
+                startedAtWall,
+                finishedAtWall,
+                skippedScheduleSlots,
             )
         }
         val safeReport = REPORT_SENSITIVE_FIELD.replace(report) { match ->
@@ -192,7 +209,10 @@ object FieldTestReporter {
         }
 
         val radios = samples.map { it.radio }
-        val sawNr = radios.any { it.displayTechnology.startsWith("5G") || it.nrBands.isNotEmpty() }
+        val sawConnectedNr = radios.any {
+            it.displayTechnology.startsWith("5G") || it.nrBands.isNotEmpty()
+        }
+        val sawNrAvailableFlag = radios.any { it.nrAvailable == true }
         val sawEndc = radios.any { it.endcAvailable == true }
         val sawCa = radios.any { it.usingCarrierAggregation }
         val sawVoWifi = radios.any { it.imsRegistered && it.imsTransport == "IWLAN" }
@@ -200,8 +220,13 @@ object FieldTestReporter {
             radio.cells.filter { it.type == "NR" }.mapNotNull { it.frequencyKhz }
         }.distinct()
         val summary = listOfNotNull(
-            if (sawNr) "5G observed" else null,
-            if (sawEndc) "EN-DC observed" else null,
+            if (sawConnectedNr) "5G connected" else null,
+            if (!sawConnectedNr && sawEndc) "EN-DC advertised; no NR connection" else null,
+            if (!sawConnectedNr && !sawEndc && sawNrAvailableFlag) {
+                "NR availability flag set; EN-DC unavailable"
+            } else {
+                null
+            },
             if (sawCa) "LTE+ observed" else null,
             if (sawVoWifi) "VoWiFi observed" else null,
             nrFrequencies.takeIf { it.isNotEmpty() }?.joinToString(
@@ -222,6 +247,10 @@ object FieldTestReporter {
         rootAtStart: Map<String, String?>,
         rootAtEnd: Map<String, String?>,
         modeLabel: String,
+        wifiIsolation: String,
+        startedAtWall: Long,
+        finishedAtWall: Long,
+        skippedScheduleSlots: Int,
     ): String {
         val radios = samples.map { it.radio }
         val first = radios.first()
@@ -230,12 +259,70 @@ object FieldTestReporter {
         val nrModes = moder.getIntArrayValue(CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY)
         val allCells = radios.flatMap { it.cells }
             .distinctBy { "${it.type}:${it.operator}:${it.channel}:${it.pci}:${it.cellId}" }
-        val lteBands = radios.flatMap { it.lteBands.toList() }.distinct().sorted()
-        val nrBands = radios.flatMap { it.nrBands.toList() }.distinct().sorted()
+        val cellInfoLteBands = radios.flatMap { it.lteBands.toList() }.distinct().sorted()
+        val cellInfoNrBands = radios.flatMap { it.nrBands.toList() }.distinct().sorted()
+        val servingLteBands = radios.flatMap { it.servingLteBands.toList() }.distinct().sorted()
+        val servingNrBands = radios.flatMap { it.servingNrBands.toList() }.distinct().sorted()
         val nrChannels = allCells.filter { it.type == "NR" }
             .map { "${it.band}/NRARFCN ${it.channel}/${it.frequencyKhz?.let { khz -> "%.3f MHz".format(Locale.US, khz / 1000.0) } ?: "unknown frequency"}" }
             .distinct()
         val created = SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())
+        val homePlmn = "${subscription.mccString.orEmpty()}${subscription.mncString.orEmpty()}"
+        val operationalPlmn = radios.asSequence()
+            .flatMap { sequenceOf(it.registeredPlmn, it.operatorNumeric) }
+            .mapNotNull { it?.let(::normalizePlmn) }
+            .filter(String::isNotBlank)
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
+            ?: homePlmn
+        val evidenceQuality = radios.map { sampleEvidenceQuality(it, operationalPlmn) }
+        val physicalQuality = physicalEvidenceQuality(rootAtEnd["physical"], radios, operationalPlmn)
+        val connectedSaSamples = radios.count { it.dataRat == "NR" }
+        val connectedNsaSamples = radios.count { it.displayTechnology == "5G NSA" }
+        val nrAvailableFlagSamples = radios.count { it.nrAvailable == true }
+        val endcSamples = radios.count { it.endcAvailable == true }
+        val caSamples = radios.count { it.usingCarrierAggregation }
+        val imsSamples = radios.count { it.imsRegistered }
+        val voWifiSamples = radios.count { it.imsRegistered && it.imsTransport == "IWLAN" }
+        val readableNrGates = gates.gates.filter { it.mask != null }
+        val deviceNrGatesOpen = readableNrGates.isNotEmpty() && readableNrGates.all { it.nrAllowed }
+        val nrDualConnectivity = moder.getNrDualConnectivityEnabled()
+        val tensorCa = moder.getTensorLteCaEnabled()
+        val volteAvailable = moder.getBooleanValue(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL)
+        val voWifiAvailable = moder.getBooleanValue(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL)
+        val voNrEnabled = moder.getBooleanValue(CarrierConfigManager.KEY_VONR_ENABLED_BOOL)
+        val showVoWifiIcon =
+            moder.getBooleanValue(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL)
+        val hideLtePlusIcon =
+            moder.getBooleanValue(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL)
+        val nrHalCapability = runCatching {
+            context.getSystemService(TelephonyManager::class.java)
+                .createForSubscriptionId(subscription.subscriptionId)
+                .isRadioInterfaceCapabilitySupported(
+                    "CAPABILITY_NR_DUAL_CONNECTIVITY_CONFIGURATION_AVAILABLE",
+                )
+        }.getOrNull()
+        val regionalPatch =
+            if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
+                PrivilegeManager.getRegionalModemPatchStatus()
+            } else {
+                null
+            }
+        val testStart = formatWallTime(startedAtWall)
+        val testEnd = formatWallTime(finishedAtWall)
+        val servingSignal = radios.flatMap { radio ->
+            radio.cells.filter { cell ->
+                cell.registered && cellBelongsToSelectedPlmn(cell, operationalPlmn)
+            }
+        }
+        val rsrpValues = servingSignal.mapNotNull { it.rsrp }
+        val sinrValues = servingSignal.mapNotNull { it.sinr }
+        val emptyCellSamples = radios.count { it.cells.isEmpty() }
+        val slowSampleCount = samples.count { it.captureDurationMs >= SAMPLE_INTERVAL_MS }
+        val captureDurations = samples.map { it.captureDurationMs.toInt() }
+        val osDistribution = OsDistributionDetector.detect(context)
 
         return buildString {
             appendLine("Pixel IMS 5G field-test report")
@@ -243,11 +330,19 @@ object FieldTestReporter {
             appendLine("App version: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.DEVICE})")
             appendLine("Android: ${Build.VERSION.RELEASE} / API ${Build.VERSION.SDK_INT}")
+            appendLine("OS distribution: ${osDistribution.name}")
+            appendLine("OS detection evidence: ${osDistribution.evidence}")
+            appendLine(
+                "Build ID/display/incremental: ${Build.ID} / ${Build.DISPLAY} / " +
+                    Build.VERSION.INCREMENTAL,
+            )
             appendLine("Build fingerprint: ${Build.FINGERPRINT}")
             appendLine("Security patch: ${Build.VERSION.SECURITY_PATCH}")
             appendLine("Baseband: ${Build.getRadioVersion().orEmpty()}")
             appendLine("Privilege backend: ${PrivilegeManager.activeMode}")
             appendLine("Test mode: $modeLabel")
+            appendLine("Connectivity isolation: $wifiIsolation")
+            appendLine("Test window: $testStart to $testEnd")
             appendLine()
             appendLine("SIM AND CARRIER (phone number, IMSI and ICCID intentionally excluded)")
             appendLine("Name: ${subscription.uniqueName}")
@@ -257,25 +352,55 @@ object FieldTestReporter {
             appendLine("Carrier ID: ${subscription.carrierId}")
             appendLine("Country: ${subscription.countryIso}")
             appendLine()
+            appendLine("EVIDENCE PROVENANCE AND QUALITY")
+            appendLine(
+                "Selected subscription: subId=${subscription.subscriptionId}, slot=${subscription.simSlotIndex}, " +
+                    "home-PLMN=${homePlmn.ifBlank { "unknown" }}, " +
+                    "operational-PLMN=${operationalPlmn.ifBlank { "unknown" }}",
+            )
+            if (homePlmn.isNotBlank() && operationalPlmn.isNotBlank() && homePlmn != operationalPlmn) {
+                appendLine(
+                    "PLMN relationship: the SIM home PLMN differs from the registered network. Serving-cell " +
+                        "validation uses the operational PLMN; this can be legitimate for shared networks, " +
+                        "national roaming, or migrated carrier arrangements.",
+                )
+            }
+            appendLine(
+                "ServiceState, NetworkRegistrationInfo, IMS state, and live callbacks: requested for the " +
+                    "selected subscription.",
+            )
+            appendLine(
+                "CellInfo: requested through the selected subscription, but Android/Tensor may return stale or " +
+                    "device-wide DSDS cells; every sample below includes consistency checks.",
+            )
+            appendLine(
+                "Root TelephonyRegistry, phone-service, PhysicalChannelConfig, and radio logs: device-global, " +
+                    "may contain both SIMs and historical buffer entries, and are not used alone as proof for " +
+                    "the selected SIM.",
+            )
+            appendLine(
+                "CellInfo consistency: missing selected-PLMN serving cells=" +
+                    "${evidenceQuality.count { it.selectedRegisteredCells == 0 }}/${samples.size}; " +
+                    "channel disagreements=${evidenceQuality.count { it.channelAgreement == false }}" +
+                    "/${samples.size}; band disagreements=${evidenceQuality.count { it.bandAgreement == false }}" +
+                    "/${samples.size}; foreign registered cells=${evidenceQuality.sumOf { it.foreignRegisteredCells }}",
+            )
+            appendLine(
+                "PhysicalChannelConfig consistency: entries=${physicalQuality.entries}; " +
+                    "matching selected-SIM serving cells=${physicalQuality.matchingSelectedServingCells}; " +
+                    "scope=device-global",
+            )
+            appendLine()
             appendLine("CONFIGURATION")
             appendLine("Carrier NR modes: ${nrModes.joinToString().ifBlank { "none" }} (1=NSA, 2=SA)")
-            appendLine("VoLTE available: ${moder.getBooleanValue(CarrierConfigManager.KEY_CARRIER_VOLTE_AVAILABLE_BOOL)}")
-            appendLine("VoWiFi available: ${moder.getBooleanValue(CarrierConfigManager.KEY_CARRIER_WFC_IMS_AVAILABLE_BOOL)}")
-            appendLine("VoNR enabled: ${moder.getBooleanValue(CarrierConfigManager.KEY_VONR_ENABLED_BOOL)}")
-            appendLine("Show VoWiFi icon: ${moder.getBooleanValue(CarrierConfigManager.KEY_SHOW_WIFI_CALLING_ICON_IN_STATUS_BAR_BOOL)}")
-            appendLine("Hide LTE+ icon: ${moder.getBooleanValue(CarrierConfigManager.KEY_HIDE_LTE_PLUS_DATA_ICON_BOOL)}")
-            appendLine("Tensor CA node: ${moder.getTensorLteCaEnabled() ?: "unavailable"}")
-            appendLine("NR dual connectivity enabled: ${moder.getNrDualConnectivityEnabled() ?: "unavailable"}")
-            appendLine(
-                "Radio HAL EN-DC control capability: " +
-                    runCatching {
-                        context.getSystemService(TelephonyManager::class.java)
-                            .createForSubscriptionId(subscription.subscriptionId)
-                            .isRadioInterfaceCapabilitySupported(
-                                "CAPABILITY_NR_DUAL_CONNECTIVITY_CONFIGURATION_AVAILABLE",
-                            )
-                    }.getOrNull(),
-            )
+            appendLine("VoLTE available: $volteAvailable")
+            appendLine("VoWiFi available: $voWifiAvailable")
+            appendLine("VoNR enabled: $voNrEnabled")
+            appendLine("Show VoWiFi icon: $showVoWifiIcon")
+            appendLine("Hide LTE+ icon: $hideLtePlusIcon")
+            appendLine("Tensor CA node: ${tensorCa ?: "unavailable"}")
+            appendLine("NR dual connectivity enabled: ${nrDualConnectivity ?: "unavailable"}")
+            appendLine("Radio HAL EN-DC control capability: ${nrHalCapability ?: "unavailable"}")
             appendLine(
                 "Band restriction: LTE=${bands.lteBands.joinToString().ifBlank { "automatic" }}; " +
                     "NR=${bands.nrBands.joinToString().ifBlank { "automatic" }}",
@@ -290,9 +415,11 @@ object FieldTestReporter {
                     }}",
             )
             gates.gates.forEach {
+                val lteState = it.mask?.let { _ -> it.lteAllowed.toString() } ?: "unknown"
+                val nrState = it.mask?.let { _ -> it.nrAllowed.toString() } ?: "unknown"
                 appendLine(
                     "Allowed reason ${it.reason} (${it.label}): mask=${it.mask ?: "unreadable"}, " +
-                        "LTE=${it.lteAllowed}, NR=${it.nrAllowed}",
+                        "LTE=$lteState, NR=$nrState",
                 )
             }
             appendLine("Relevant effective CarrierConfig values:")
@@ -304,35 +431,74 @@ object FieldTestReporter {
                 ROOT_DIAGNOSTIC_PROPERTIES.forEach { key ->
                     appendLine("  $key=${PrivilegeManager.getRootSystemProperty(key) ?: "unavailable"}")
                 }
-                val regionalPatch = PrivilegeManager.getRegionalModemPatchStatus()
                 appendLine("Regional modem compatibility patch:")
                 appendLine(
-                    "  device=${regionalPatch.device}; supported=${regionalPatch.supported}; " +
-                        "Magisk=${regionalPatch.magiskAvailable}; stock-db=${regionalPatch.sourceAvailable}",
+                    "  device=${regionalPatch?.device}; supported=${regionalPatch?.supported}; " +
+                        "Magisk=${regionalPatch?.magiskAvailable}; stock-db=${regionalPatch?.sourceAvailable}",
                 )
                 appendLine(
-                    "  installed=${regionalPatch.installed}; removal-pending=${regionalPatch.removalPending}; " +
-                        "reboot-required=${regionalPatch.rebootRequired}",
+                    "  installed=${regionalPatch?.installed}; removal-pending=${regionalPatch?.removalPending}; " +
+                        "reboot-required=${regionalPatch?.rebootRequired}",
                 )
                 appendLine(
-                    "  source-sha256=${regionalPatch.sourceSha256.ifBlank { "not recorded" }}; " +
-                        "patched-sha256=${regionalPatch.patchedSha256.ifBlank { "not recorded" }}",
+                    "  source-sha256=${regionalPatch?.sourceSha256?.ifBlank { "not recorded" }}; " +
+                        "patched-sha256=${regionalPatch?.patchedSha256?.ifBlank { "not recorded" }}",
                 )
-                appendLine("  status=${regionalPatch.message}")
+                appendLine("  status=${regionalPatch?.message}")
             }
             appendLine()
             appendLine("TWO-MINUTE OBSERVATION")
             appendLine(
-                "Samples: ${samples.size}, target interval: ${SAMPLE_INTERVAL_MS / 1000}s, " +
-                    "actual duration: ${samples.last().elapsedMs / 1000.0}s",
+                "Samples captured: ${samples.size}/$SAMPLE_COUNT; skipped schedule slots: " +
+                    "$skippedScheduleSlots; target interval: ${SAMPLE_INTERVAL_MS / 1000}s; " +
+                    "actual test window: ${(finishedAtWall - startedAtWall) / 1000.0}s",
+            )
+            appendLine(
+                "Sample acquisition duration: ${rangeText(captureDurations, "ms")}; " +
+                    "captures at least ${SAMPLE_INTERVAL_MS}ms=$slowSampleCount/${samples.size}",
             )
             appendLine("Telephony callback registered: $callbackRegistered")
-            appendLine("LTE bands observed: ${lteBands.joinToString { "B$it" }.ifBlank { "none" }}")
-            appendLine("NR bands observed: ${nrBands.joinToString { "n$it" }.ifBlank { "none" }}")
+            appendLine(
+                "Serving-registration LTE bands: " +
+                    servingLteBands.joinToString { "B$it" }.ifBlank { "none" },
+            )
+            appendLine(
+                "Serving-registration NR bands: " +
+                    servingNrBands.joinToString { "n$it" }.ifBlank { "none" },
+            )
+            appendLine(
+                "CellInfo LTE bands exposed: " +
+                    cellInfoLteBands.joinToString { "B$it" }.ifBlank { "none" },
+            )
+            appendLine(
+                "CellInfo NR bands exposed: " +
+                    cellInfoNrBands.joinToString { "n$it" }.ifBlank { "none" },
+            )
             appendLine("NR channels/frequencies observed: ${nrChannels.joinToString().ifBlank { "none" }}")
             appendLine("Unique cells exposed by Android: ${allCells.size}")
+            appendLine(
+                "CellInfo visibility: empty=$emptyCellSamples/${samples.size}; " +
+                    if (emptyCellSamples == samples.size) {
+                        "Android exposed no CellInfo records; serving bands below come from ServiceState."
+                    } else {
+                        "non-empty=${samples.size - emptyCellSamples}/${samples.size}."
+                    },
+            )
+            appendLine(
+                "State counts: 5G-SA=$connectedSaSamples/${samples.size}; " +
+                    "5G-NSA=$connectedNsaSamples/${samples.size}; " +
+                    "NR-availability-flag=$nrAvailableFlagSamples/${samples.size}; " +
+                    "EN-DC=$endcSamples/${samples.size}; " +
+                    "LTE-CA=$caSamples/${samples.size}; IMS=$imsSamples/${samples.size}; " +
+                    "IMS-over-IWLAN=$voWifiSamples/${samples.size}",
+            )
+            appendLine(
+                "Selected serving-cell signal: RSRP=${rangeText(rsrpValues, "dBm")}; " +
+                    "SINR=${rangeText(sinrValues, "dB")}",
+            )
             samples.forEachIndexed { index, sample ->
                 val radio = sample.radio
+                val quality = evidenceQuality[index]
                 appendLine()
                 appendLine("Sample ${index + 1} @ ${sample.capturedAt} (+${sample.elapsedMs}ms)")
                 appendLine(
@@ -356,6 +522,12 @@ object FieldTestReporter {
                     "Serving LTE=${radio.servingLteBands.joinToString { "B$it" }.ifBlank { "none" }}; " +
                         "Serving NR=${radio.servingNrBands.joinToString { "n$it" }.ifBlank { "none" }}",
                 )
+                appendLine(
+                    "Evidence check: selected-PLMN registered cells=${quality.selectedRegisteredCells}; " +
+                        "foreign registered cells=${quality.foreignRegisteredCells}; " +
+                        "ServiceState/CellInfo channel agreement=${quality.channelAgreement ?: "unknown"}; " +
+                        "band agreement=${quality.bandAgreement ?: "unknown"}",
+                )
                 appendLine("NetworkRegistrationInfo=${radio.registrationSummary.replace('\n', ' ')}")
                 appendLine("ServiceState=${radio.serviceStateSummary.replace('\n', ' ')}")
                 radio.cells.forEach { cell ->
@@ -371,63 +543,127 @@ object FieldTestReporter {
                             "connection-status=${cell.connectionStatus}",
                     )
                 }
-                appendLine("[physical-channels]")
-                appendLine(sample.physicalChannels ?: "Unavailable")
-                appendLine("[telephony-registry-change-source]")
-                appendLine(sample.telephonyRegistry ?: "Unavailable")
             }
             appendLine()
             appendLine("LIVE TELEPHONY CALLBACK TIMELINE")
             if (eventLog.isEmpty()) {
-                appendLine("No callback events were captured.")
+                appendLine(
+                    "No callback events were delivered. Registration succeeded, but Android callbacks report " +
+                        "changes rather than guaranteeing an initial snapshot; the timed polling samples remain " +
+                        "the primary evidence.",
+                )
             } else {
                 eventLog.forEach(::appendLine)
             }
             appendLine()
             appendLine("AUTOMATIC INTERPRETATION")
             when {
-                radios.any { it.dataRat == "NR" } ->
-                    appendLine("5G SA was connected during the test.")
-                radios.any { it.displayTechnology == "5G NSA" } ->
-                    appendLine("5G NSA was connected during the test.")
-                radios.any { it.endcAvailable == true } ->
-                    appendLine("The LTE anchor advertised EN-DC, so NSA was available but not confirmed connected.")
-                radios.any { it.nrAvailable == true } ->
+                connectedSaSamples > 0 -> {
+                    appendLine("Result code: CONNECTED_5G_SA")
+                    appendLine("5G SA was connected in $connectedSaSamples/${samples.size} samples.")
+                }
+                connectedNsaSamples > 0 -> {
+                    appendLine("Result code: CONNECTED_5G_NSA")
+                    appendLine("5G NSA was connected in $connectedNsaSamples/${samples.size} samples.")
+                }
+                endcSamples > 0 -> {
+                    appendLine("Result code: ENDC_ADVERTISED_NO_NR_CONNECTION")
                     appendLine(
-                        "Android reported NR eligibility, but the serving registration reported EN-DC=false. " +
-                            "The LTE anchor/network did not expose an NSA attachment path; NR was not connected.",
+                        "The selected LTE registration advertised EN-DC in $endcSamples/${samples.size} samples, " +
+                            "but Android did not confirm an NR connection. No network rejection cause should be " +
+                            "claimed unless a time-matched SCG/RRC rejection appears in the test-window evidence.",
                     )
-                else ->
-                    appendLine("No NR eligibility, EN-DC, or connected NR cell was exposed during this test.")
+                }
+                nrAvailableFlagSamples > 0 -> {
+                    appendLine("Result code: NR_AVAILABLE_FLAG_NO_ENDC")
+                    appendLine(
+                        "Android's DataSpecificRegistrationInfo reported isNrAvailable=true in " +
+                            "$nrAvailableFlagSamples/${samples.size} samples, but the selected LTE registration " +
+                            "never exposed EN-DC. This flag is not proof of a measurable NR cell, NSA eligibility, " +
+                            "or an attempted SCG addition. No NSA rejection should be claimed because no EN-DC " +
+                            "attachment path was exposed.",
+                    )
+                }
+                else -> {
+                    appendLine("Result code: LTE_ONLY_NO_NR_ADVERTISEMENT")
+                    appendLine(
+                        "No NR eligibility, EN-DC, or connected NR cell was exposed by the selected subscription " +
+                            "during this test. This does not mean 5G is unsupported or unavailable elsewhere; it " +
+                            "only describes this serving LTE anchor and test window.",
+                    )
+                }
             }
             appendLine(
-                if (radios.any { it.usingCarrierAggregation }) {
-                    "LTE carrier aggregation was active; the app should display LTE+."
+                "Device-side NR gates: readable reasons open=$deviceNrGatesOpen; " +
+                    "carrier NSA=${nrModes.contains(1)}; carrier SA=${nrModes.contains(2)}; " +
+                    "NR dual connectivity=${nrDualConnectivity ?: "unavailable"}; " +
+                    "radio HAL EN-DC control=${nrHalCapability ?: "unavailable"}; " +
+                    "regional modem patch=${regionalPatch?.installed ?: "not applicable"}",
+            )
+            appendLine(
+                if (caSamples > 0) {
+                    "LTE carrier aggregation was active in $caSamples/${samples.size} samples; LTE+ is valid only " +
+                        "for those samples."
                 } else {
                     "LTE carrier aggregation was not active in the captured samples."
                 },
             )
             appendLine(
-                if (radios.any { it.imsRegistered && it.imsTransport == "IWLAN" }) {
-                    "IMS registered through IWLAN; the app should display VoWiFi."
+                if (voWifiSamples > 0) {
+                    "IMS registered through IWLAN in $voWifiSamples/${samples.size} samples; VoWiFi was active."
                 } else {
-                    "No IMS-over-IWLAN registration was captured."
+                    "No IMS-over-IWLAN registration was captured. IMS registration over LTE does not prove VoWiFi."
                 },
             )
+            appendLine(
+                when {
+                    imsSamples == samples.size ->
+                        "IMS remained registered for every sample."
+                    imsSamples == 0 ->
+                        "IMS was unregistered for every sample. CarrierConfig availability flags do not prove " +
+                            "carrier provisioning or successful IMS registration."
+                    else ->
+                        "IMS was registered in $imsSamples/${samples.size} samples, indicating intermittent or " +
+                            "transitioning IMS registration during the test."
+                },
+            )
+            if (
+                evidenceQuality.any { it.selectedRegisteredCells == 0 } ||
+                evidenceQuality.any { it.channelAgreement == false || it.bandAgreement == false } ||
+                evidenceQuality.any { it.foreignRegisteredCells > 0 } ||
+                (
+                    physicalQuality.entries > 0 &&
+                        physicalQuality.matchingSelectedServingCells == 0
+                    )
+            ) {
+                appendLine(
+                    "Evidence warning: Android returned conflicting or cross-SIM CellInfo in part of this test. " +
+                        "The selected subscription's ServiceState/NetworkRegistrationInfo drives the verdict; " +
+                        "conflicting CellInfo and device-global root physical channels are retained for debugging " +
+                        "but not treated as selected-SIM proof.",
+                )
+            }
             appendLine()
             appendLine("ROOT-ONLY TELEPHONY EVIDENCE")
             if (PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady()) {
                 appendLine(
-                    "Start and end radio-log snapshots may overlap because the app intentionally does not clear " +
-                        "Android's radio buffer. Compare timestamps with the two-minute sample timeline.",
+                    "Scope: DEVICE-GLOBAL. These sources may contain both SIMs. Radio output is a historical " +
+                        "ring buffer; only distinct lines that appeared between the start and end snapshots are " +
+                        "shown as test-window candidates. They are supporting evidence, not selected-SIM proof.",
                 )
-                rootAtStart.forEach { (source, evidence) ->
-                    appendLine("[$source-start]")
-                    appendLine(evidence?.ifBlank { "No matching lines." } ?: "Unavailable")
+                appendLine("Selected test window: $testStart to $testEnd")
+                listOf("phone", "registry", "radio").forEach { source ->
+                    appendLine("[$source-test-window-delta-device-global]")
+                    appendLine(
+                        evidenceDelta(rootAtStart[source], rootAtEnd[source])
+                            .ifBlank {
+                                "No new distinct matching lines were isolated. This is not proof that no event occurred."
+                            },
+                    )
                 }
-                rootAtEnd.forEach { (source, evidence) ->
-                    appendLine("[$source-end]")
-                    appendLine(evidence?.ifBlank { "No matching NR/EN-DC/SCG lines were present." } ?: "Unavailable")
+                listOf("physical", "carrier", "properties").forEach { source ->
+                    appendLine("[$source-end-snapshot-device-global]")
+                    appendLine(rootAtEnd[source]?.ifBlank { "No matching lines." } ?: "Unavailable")
                 }
             } else {
                 appendLine(
@@ -443,6 +679,108 @@ object FieldTestReporter {
                     "cannot force a tower to advertise EN-DC or force the network to accept an NSA SCG request.",
             )
         }
+    }
+
+    private fun sampleEvidenceQuality(
+        radio: SubscriptionModer.RadioDiagnostics,
+        selectedPlmn: String,
+    ): SampleEvidenceQuality {
+        val registered = radio.cells.filter { it.registered }
+        val selected = registered.filter { cellBelongsToSelectedPlmn(it, selectedPlmn) }
+        val foreign = registered.count {
+            normalizePlmn(it.operator).isNotBlank() && !cellBelongsToSelectedPlmn(it, selectedPlmn)
+        }
+        val channelAgreement = when {
+            radio.channelNumber == null || selected.isEmpty() -> null
+            else -> selected.any { it.channel == radio.channelNumber }
+        }
+        val serviceBands = buildSet {
+            radio.servingLteBands.forEach { add("LTE:$it") }
+            radio.servingNrBands.forEach { add("NR:$it") }
+        }
+        val cellBands = selected.mapNotNull { cell ->
+            bandNumber(cell.band)?.let { "${cell.type}:$it" }
+        }.toSet()
+        val bandAgreement = when {
+            serviceBands.isEmpty() || cellBands.isEmpty() -> null
+            else -> serviceBands.any(cellBands::contains)
+        }
+        return SampleEvidenceQuality(
+            selectedRegisteredCells = selected.size,
+            foreignRegisteredCells = foreign,
+            channelAgreement = channelAgreement,
+            bandAgreement = bandAgreement,
+        )
+    }
+
+    private fun physicalEvidenceQuality(
+        physical: String?,
+        radios: List<SubscriptionModer.RadioDiagnostics>,
+        selectedPlmn: String,
+    ): PhysicalEvidenceQuality {
+        val selectedServingKeys = radios.flatMap { radio ->
+            radio.cells.filter {
+                it.registered && cellBelongsToSelectedPlmn(it, selectedPlmn)
+            }.mapNotNull { cell ->
+                bandNumber(cell.band)?.let { band -> "${cell.type}:$band:${cell.pci}" }
+            }
+        }.toSet()
+        val entries = physical.orEmpty().lineSequence().mapNotNull { line ->
+            val rat = Regex("""\bRAT=([^,]+)""").find(line)?.groupValues?.get(1)?.trim()
+            val band = Regex("""\bband=([^,]+)""").find(line)?.groupValues?.get(1)?.trim()
+            val pci = Regex("""\bPCI=([^,]+)""").find(line)?.groupValues?.get(1)?.trim()
+            val normalizedRat = when {
+                rat.equals("LTE", ignoreCase = true) -> "LTE"
+                rat.equals("NR", ignoreCase = true) -> "NR"
+                else -> null
+            }
+            val normalizedBand = band?.let(::bandNumber)
+            if (normalizedRat == null || normalizedBand == null || pci.isNullOrBlank()) {
+                null
+            } else {
+                "$normalizedRat:$normalizedBand:$pci"
+            }
+        }.toList()
+        return PhysicalEvidenceQuality(
+            entries = entries.size,
+            matchingSelectedServingCells = entries.count(selectedServingKeys::contains),
+        )
+    }
+
+    private fun cellBelongsToSelectedPlmn(
+        cell: SubscriptionModer.CellSnapshot,
+        selectedPlmn: String,
+    ): Boolean {
+        val cellPlmn = normalizePlmn(cell.operator)
+        return selectedPlmn.isNotBlank() && cellPlmn == selectedPlmn
+    }
+
+    private fun normalizePlmn(value: String): String = value.filter(Char::isDigit)
+
+    private fun bandNumber(value: String): Int? =
+        value.dropWhile { !it.isDigit() }.takeWhile(Char::isDigit).toIntOrNull()
+
+    private fun formatWallTime(epochMs: Long): String =
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS Z", Locale.US).format(Date(epochMs))
+
+    private fun rangeText(values: List<Int>, unit: String): String =
+        if (values.isEmpty()) {
+            "unavailable"
+        } else {
+            "${values.minOrNull()} to ${values.maxOrNull()} $unit"
+        }
+
+    private fun evidenceDelta(start: String?, end: String?): String {
+        if (end == null) return "Unavailable"
+        val startLines = start.orEmpty().lineSequence().map(String::trim).filter(String::isNotBlank).toSet()
+        return end.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .filterNot(startLines::contains)
+            .distinct()
+            .take(220)
+            .joinToString("\n")
+            .take(ROOT_SNAPSHOT_LIMIT)
     }
 
     private fun formatConfigValue(value: Any?): String = when (value) {

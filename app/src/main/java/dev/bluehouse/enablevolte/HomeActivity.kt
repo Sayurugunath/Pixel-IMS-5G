@@ -1,6 +1,7 @@
 package dev.bluehouse.enablevolte
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -14,8 +15,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -34,10 +47,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,11 +62,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -68,6 +81,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import dev.bluehouse.enablevolte.components.OnLifecycleEvent
 import dev.bluehouse.enablevolte.components.GlassBackdrop
+import dev.bluehouse.enablevolte.components.GlassInfoDialog
+import dev.bluehouse.enablevolte.components.WhatsNewDialog
 import dev.bluehouse.enablevolte.pages.Config
 import dev.bluehouse.enablevolte.pages.ControlsHub
 import dev.bluehouse.enablevolte.pages.Bands
@@ -222,7 +237,20 @@ fun PixelIMSApp(
     }
     var privilegeError by rememberSaveable { mutableStateOf<String?>(null) }
     var privilegeConnecting by rememberSaveable { mutableStateOf(false) }
+    val osDistribution = remember { OsDistributionDetector.detect(context) }
+    var showShizukuRegionalWarning by rememberSaveable { mutableStateOf(false) }
+    var whatsNew by remember { mutableStateOf(UpdateManager.changelogToShow(context)) }
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(selectedPrivilegeMode, osDistribution.name) {
+        if (selectedPrivilegeMode == PrivilegeMode.SHIZUKU.name) {
+            val warningKey = "regional_warning_${Build.VERSION.INCREMENTAL}_${osDistribution.name}"
+            val preferences = context.getSharedPreferences("pixel_ims_notices", Context.MODE_PRIVATE)
+            if (!preferences.getBoolean(warningKey, false)) {
+                showShizukuRegionalWarning = true
+            }
+        }
+    }
 
     LaunchedEffect(navigationRequest) {
         navigationRequest?.let { route ->
@@ -321,6 +349,40 @@ fun PixelIMSApp(
             },
         )
     }
+    if (selectedPrivilegeMode != null && privilegeError == null) {
+        whatsNew?.let { changelog ->
+            WhatsNewDialog(
+                changelog = changelog,
+                onDismiss = {
+                    UpdateManager.markChangelogShown(context, changelog.version)
+                    whatsNew = null
+                },
+            )
+        }
+    }
+    if (
+        whatsNew == null &&
+        showShizukuRegionalWarning &&
+        selectedPrivilegeMode == PrivilegeMode.SHIZUKU.name
+    ) {
+        GlassInfoDialog(
+            title = stringResource(R.string.shizuku_regional_limit_title),
+            message = stringResource(
+                R.string.shizuku_regional_limit_message,
+                osDistribution.name,
+            ),
+            confirmLabel = stringResource(R.string.understood),
+            onDismiss = {
+                val warningKey =
+                    "regional_warning_${Build.VERSION.INCREMENTAL}_${osDistribution.name}"
+                context.getSharedPreferences("pixel_ims_notices", Context.MODE_PRIVATE)
+                    .edit()
+                    .putBoolean(warningKey, true)
+                    .apply()
+                showShizukuRegionalWarning = false
+            },
+        )
+    }
     if (showRecoveryDialog) {
         AlertDialog(
             onDismissRequest = { showRecoveryDialog = false },
@@ -344,17 +406,35 @@ fun PixelIMSApp(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        currentBackStackEntry?.destination?.label?.toString() ?: stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
+                    val route = currentBackStackEntry?.destination?.route
+                    if (route in setOf("home", "controls", "monitor", "field-test")) {
+                        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                            Text(
+                                stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                stringResource(R.string.app_signature),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontStyle = FontStyle.Italic,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    } else {
+                        Text(
+                            currentBackStackEntry?.destination?.label?.toString()
+                                ?: stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 },
                 navigationIcon = {
                     if (currentBackStackEntry?.destination?.depth?.let { it > 1 } == true) {
                         IconButton(onClick = {
                             navController.popBackStack()
-                        }, colors = IconButtonDefaults.filledTonalIconButtonColors()) {
+                        }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Go back",
@@ -366,7 +446,6 @@ fun PixelIMSApp(
                     if (subscriptions.isNotEmpty()) {
                         IconButton(
                             onClick = { showRecoveryDialog = true },
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
                             Icon(Icons.Filled.PowerSettingsNew, contentDescription = stringResource(R.string.restore_and_reboot))
                         }
@@ -374,7 +453,6 @@ fun PixelIMSApp(
                     if (currentBackStackEntry?.destination?.route != "home/about") {
                         IconButton(
                             onClick = { navController.navigate("home/about") },
-                            colors = IconButtonDefaults.filledTonalIconButtonColors(),
                         ) {
                             Icon(Icons.Filled.Info, contentDescription = stringResource(R.string.about))
                         }
@@ -382,7 +460,7 @@ fun PixelIMSApp(
                     if (currentBackStackEntry?.destination?.route == "home") {
                         IconButton(onClick = {
                             loadApplication()
-                        }, colors = IconButtonDefaults.filledTonalIconButtonColors()) {
+                        }) {
                             Icon(
                                 imageVector = Icons.Filled.Refresh,
                                 contentDescription = "Refresh contents",
@@ -399,10 +477,12 @@ fun PixelIMSApp(
         bottomBar = {
             val currentRoute = currentBackStackEntry?.destination?.route
             if (currentRoute in setOf("home", "controls", "monitor", "field-test", "config/{subId}", "bands/{subId}")) {
-                NavigationBar(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp).clip(RoundedCornerShape(32.dp)),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
-                    tonalElevation = 8.dp,
+                Surface(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp).fillMaxWidth().height(78.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+                    tonalElevation = 2.dp,
+                    shadowElevation = 2.dp,
                 ) {
                     val currentDestination = currentBackStackEntry?.destination
                     val items = arrayListOf(
@@ -412,33 +492,76 @@ fun PixelIMSApp(
                         Screen("field-test", stringResource(R.string.field_test_short), Icons.Filled.Science),
                     )
 
-                    items.forEach { screen ->
-                        NavigationBarItem(
-                            icon = { Icon(screen.icon, contentDescription = null) },
-                            label = {
-                                Text(screen.title)
-                            },
-                            selected = when {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        items.forEach { screen ->
+                            val selected = when {
                                 screen.route == "controls" ->
                                     currentRoute in setOf("controls", "config/{subId}", "bands/{subId}")
                                 else -> currentDestination?.hierarchy?.any { it.route == screen.route } == true
-                            },
-                            onClick = {
+                            }
+                            val iconScale by animateFloatAsState(
+                                targetValue = if (selected) 1.08f else 0.94f,
+                                animationSpec = spring(dampingRatio = 0.74f, stiffness = 440f),
+                                label = "navigation icon",
+                            )
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clickable {
                                 navController.navigate(screen.route) {
-                                    // Pop up to the start destination of the graph to
-                                    // avoid building up a large stack of destinations
-                                    // on the back stack as users select items
                                     popUpTo(navController.graph.findStartDestination().id) {
                                         saveState = true
                                     }
-                                    // Avoid multiple copies of the same destination when
-                                    // reselecting the same item
                                     launchSingleTop = true
-                                    // Restore state when reselecting a previously selected item
                                     restoreState = true
                                 }
-                            },
-                        )
+                                    },
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 52.dp, height = 36.dp)
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            if (selected) {
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                            } else {
+                                                Color.Transparent
+                                            },
+                                        ),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        screen.icon,
+                                        contentDescription = screen.title,
+                                        tint = if (selected) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                        modifier = Modifier.size(24.dp).graphicsLayer {
+                                            scaleX = iconScale
+                                            scaleY = iconScale
+                                        },
+                                    )
+                                }
+                                Text(
+                                    screen.title,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    maxLines = 1,
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -4,11 +4,31 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current public release: `1.0.3`. The one-time uninstall/reinstall notice applies specifically
+Current public release: `1.0.4`. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
 
 ## Changelog
+
+### [1.0.4](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.4)
+
+- Added a versioned liquid-glass **What’s New** experience after OTA updates,
+  with semantic colors highlighting features, improvements, fixes, and
+  important limitations. The current changelog can be reopened from **About**.
+- Persisted the GitHub target version and release notes across Android’s
+  installer, with an embedded structured fallback for sideloaded or interrupted
+  updates.
+- Redesigned the complete interface with premium typography, calmer spacing,
+  semantic radio-status colors, refined glass surfaces, and restrained motion.
+- Replaced the Material bottom navigation with fixed, perfectly centered icon
+  slots and stable labels, and added the **by Nirmala** app signature.
+- Added reversible Wi-Fi isolation for Monitor and Field Test, with fail-closed
+  behavior and automatic restoration.
+- Expanded reports with OS/build identity, operational PLMN, evidence
+  provenance, NR/EN-DC semantics, IMS/callback coverage, readable policy gates,
+  and sanitized root modem deltas.
+- Added an honest regional-5G Shizuku limitation notice for stock Pixel OS and
+  alternative Pixel operating systems.
 
 ### [1.0.3](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.3)
 
@@ -66,7 +86,7 @@ can update normally to later versions.
 
 > **Upgrade note:** version `0.12.6` changed the application ID to
 > `com.nirmala.pixel5gims`, so users of the older package had to uninstall it
-> once. Updates from `0.12.6` onward, including `1.0.3`, install normally.
+> once. Updates from `0.12.6` onward, including `1.0.4`, install normally.
 
 ## Version 1.0.2r interface
 
@@ -152,6 +172,8 @@ carrier policy all affect whether 5G attaches and how fast it runs.
 - In Magisk Root mode, validate and stage a reversible systemless Tensor `cfg.db` wildcard/PTCRB compatibility mapping using the phone's own firmware database. The app refuses unknown schemas and never spoofs the SIM, PLMN, or Wi-Fi country.
 - Run a two-minute, 24-sample 5G field test and export a privacy-labelled report to `Downloads/Pixel IMS 5G` with NRARFCN/frequency, SS/CSI measurements, registration/reject state, callback events, PCC/SCC history, CarrierConfig gates, and sanitized root evidence.
 - Run a separate Aggressive 5G field test that temporarily opens supported Android-side LTE/NR gates, keeps data active with small connectivity checks, captures the same detailed evidence, and restores the pre-test settings even when stopped.
+- Field Test and Monitor now create a reversible mobile-radio-only session: Wi-Fi must disable successfully before capture begins and is restored when the test, page, or foreground monitoring session ends. VoWiFi/IWLAN is intentionally unavailable during this isolated mode.
+- Detect stock Pixel OS, GrapheneOS, and common Pixel custom-OS build markers in reports. Every Pixel user choosing Shizuku receives a one-time glass warning that Android-side overrides cannot guarantee regional 5G without a vendor modem configuration change.
 - Use the separate Monitoring section for TelephonyRegistry events, evidence-based 5G attach tracing, effective-vs-Android-default CarrierConfig differences, NR capability decoding, and root-only PCC/SCC physical channels.
 - In Root mode, capture sanitized TelephonyRegistry, phone-service, and radio-log evidence. Shizuku mode clearly marks phone-process and `READ_PRECISE_PHONE_STATE` internals as unavailable.
 - Display LTE+ only when Android confirms carrier aggregation, 5G NSA/SA only from connected NR state, and VoWiFi only from active IMS-over-IWLAN registration.

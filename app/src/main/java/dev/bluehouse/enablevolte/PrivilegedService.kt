@@ -2,6 +2,7 @@ package dev.bluehouse.enablevolte
 
 import android.content.Intent
 import android.database.sqlite.SQLiteDatabase
+import android.net.wifi.IWifiManager
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -85,6 +86,16 @@ class PrivilegedService : RootService() {
                 Log.e(TAG, "Unable to schedule regional modem patch removal", it)
                 regionalPatchStatus(message = it.message ?: "Unable to schedule removal.").toString()
             }
+
+        override fun getWifiEnabledState(): Int =
+            IWifiManager.Stub.asInterface(
+                ServiceManager.getService("wifi") ?: error("Wi-Fi service is unavailable"),
+            ).wifiEnabledState
+
+        override fun setWifiEnabled(enabled: Boolean): Boolean =
+            IWifiManager.Stub.asInterface(
+                ServiceManager.getService("wifi") ?: error("Wi-Fi service is unavailable"),
+            ).setWifiEnabled("com.android.shell", enabled)
     }
 
     override fun onBind(intent: Intent): IBinder = binder
@@ -345,6 +356,7 @@ class PrivilegedService : RootService() {
             "isub",
             "power",
             "activity",
+            "wifi",
             "telephony.oem.oemrilhook",
         )
 
@@ -477,16 +489,18 @@ class PrivilegedService : RootService() {
                 .ifBlank { "No matching active CarrierConfig evidence was exposed." }
 
         private fun extractPhysicalChannels(raw: String): String {
+            val scope = "scope=device-global TelephonyRegistry; subscription/phone provenance is not exposed by this API"
             val entries = Regex("\\{mConnectionStatus=[^}]+\\}")
                 .findAll(raw)
                 .map { it.value }
                 .distinct()
                 .toList()
-            if (entries.isEmpty()) return "No active PhysicalChannelConfig entries were reported."
+            if (entries.isEmpty()) return "$scope\nNo active PhysicalChannelConfig entries were reported."
             fun field(entry: String, name: String): String =
                 Regex("$name=([^,}]+)").find(entry)?.groupValues?.get(1)?.trim().orEmpty().ifBlank { "—" }
-            return entries.joinToString("\n") { entry ->
+            return scope + "\n" + entries.mapIndexed { index, entry ->
                 listOf(
+                    "entry=${index + 1}",
                     "status=${field(entry, "mConnectionStatus")}",
                     "RAT=${field(entry, "mNetworkType")}",
                     "band=${field(entry, "mBand")}",
@@ -498,7 +512,7 @@ class PrivilegedService : RootService() {
                     "DL-frequency-kHz=${field(entry, "mDownlinkFrequency")}",
                     "UL-frequency-kHz=${field(entry, "mUplinkFrequency")}",
                 ).joinToString(", ")
-            }
+            }.joinToString("\n")
         }
     }
 }

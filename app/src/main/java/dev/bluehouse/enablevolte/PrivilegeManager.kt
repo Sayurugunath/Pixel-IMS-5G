@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.os.ServiceManager
 import android.util.Log
+import android.net.wifi.IWifiManager
 import com.topjohnwu.superuser.ipc.RootService
 import rikka.shizuku.ShizukuBinderWrapper
 
@@ -148,6 +150,28 @@ object PrivilegeManager {
         rootConnection?.let { runCatching { RootService.unbind(it) } }
         rootConnection = null
         rootBridge = null
+    }
+
+    fun getPrivilegedWifiState(): Int =
+        when (activeMode) {
+            PrivilegeMode.ROOT ->
+                requireNotNull(rootBridge) { "Root service is not connected" }.wifiEnabledState
+            PrivilegeMode.SHIZUKU ->
+                shizukuWifiService().wifiEnabledState
+        }
+
+    fun setPrivilegedWifiEnabled(enabled: Boolean): Boolean =
+        when (activeMode) {
+            PrivilegeMode.ROOT ->
+                requireNotNull(rootBridge) { "Root service is not connected" }.setWifiEnabled(enabled)
+            PrivilegeMode.SHIZUKU ->
+                shizukuWifiService().setWifiEnabled("com.android.shell", enabled)
+        }
+
+    private fun shizukuWifiService(): IWifiManager {
+        val directBinder = ServiceManager.getService(Context.WIFI_SERVICE)
+            ?: error("Wi-Fi service is unavailable")
+        return IWifiManager.Stub.asInterface(ShizukuBinderWrapper(directBinder))
     }
 
     fun wrapService(name: String, directBinder: IBinder): IBinder =

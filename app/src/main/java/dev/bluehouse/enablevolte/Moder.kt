@@ -749,8 +749,18 @@ class SubscriptionModer(
                         ?.let(::listOf) ?: emptyList()
                 }
             }.distinct().sorted().toIntArray(),
-            servingLteBands = (servingIdentity as? CellIdentityLte)?.bands?.sortedArray() ?: intArrayOf(),
-            servingNrBands = (servingIdentity as? CellIdentityNr)?.bands?.sortedArray() ?: intArrayOf(),
+            servingLteBands = (servingIdentity as? CellIdentityLte)?.bands
+                ?.toList()
+                ?.distinct()
+                ?.sorted()
+                ?.toIntArray()
+                ?: intArrayOf(),
+            servingNrBands = (servingIdentity as? CellIdentityNr)?.bands
+                ?.toList()
+                ?.distinct()
+                ?.sorted()
+                ?.toIntArray()
+                ?: intArrayOf(),
             dataRat = dataRat,
             displayTechnology = displayTechnology,
             usingCarrierAggregation = usingCarrierAggregation,

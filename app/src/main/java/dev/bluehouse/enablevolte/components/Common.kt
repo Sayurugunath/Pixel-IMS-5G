@@ -37,8 +37,13 @@ fun OnLifecycleEvent(onEvent: (owner: LifecycleOwner, event: Lifecycle.Event) ->
 
 @Composable
 fun HeaderText(text: String) {
-    Row(modifier = Modifier.padding(top = 24.dp, bottom = 8.dp, start = 8.dp)) {
-        Text(text = text, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+    Row(modifier = Modifier.padding(top = 18.dp, bottom = 5.dp, start = 4.dp)) {
+        Text(
+            text = text.uppercase(),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

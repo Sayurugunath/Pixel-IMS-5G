@@ -29,8 +29,8 @@ fun ClickablePropertyView(
     onClick: (() -> Unit)? = null,
 ) {
     if (value == null) {
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
+        CompactPropertySurface(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
                 Text(text = label, style = MaterialTheme.typography.titleMedium)
                 Text(text = stringResource(R.string.unknown), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
@@ -38,17 +38,17 @@ fun ClickablePropertyView(
         return
     }
     if (onClick != null) {
-        GlassSurface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                Text(text = label, modifier = Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.titleMedium, fontFamily = labelFontFamily)
-                Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, fontFamily = valueFontFamily)
+        CompactPropertySurface(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
+                Text(text = label, modifier = Modifier.padding(bottom = 2.dp), style = MaterialTheme.typography.titleMedium, fontFamily = labelFontFamily)
+                Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, fontFamily = valueFontFamily)
             }
         }
     } else {
-        GlassSurface(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp)) {
-                Text(text = label, modifier = Modifier.padding(bottom = 4.dp), style = MaterialTheme.typography.titleMedium, fontFamily = labelFontFamily)
-                Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, fontFamily = valueFontFamily)
+        CompactPropertySurface(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp)) {
+                Text(text = label, modifier = Modifier.padding(bottom = 2.dp), style = MaterialTheme.typography.titleMedium, fontFamily = labelFontFamily)
+                Text(text = value, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall, fontFamily = valueFontFamily)
             }
         }
     }

@@ -11,4 +11,6 @@ interface IPrivilegedService {
     String getRegionalModemPatchStatus();
     String installRegionalModemPatch();
     String scheduleRegionalModemPatchRemoval();
+    int getWifiEnabledState();
+    boolean setWifiEnabled(boolean enabled);
 }

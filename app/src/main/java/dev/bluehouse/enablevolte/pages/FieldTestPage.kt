@@ -9,9 +9,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -28,12 +34,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.bluehouse.enablevolte.FieldTestReporter
 import dev.bluehouse.enablevolte.FieldTestResult
+import dev.bluehouse.enablevolte.MobileRadioIsolation
+import dev.bluehouse.enablevolte.MobileRadioIsolationSession
 import dev.bluehouse.enablevolte.PrivilegeManager
 import dev.bluehouse.enablevolte.PrivilegeMode
 import dev.bluehouse.enablevolte.R
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.components.GlassSurface
-import dev.bluehouse.enablevolte.components.HeaderText
+import dev.bluehouse.enablevolte.components.PremiumPageIntro
+import dev.bluehouse.enablevolte.components.PremiumSectionLabel
+import dev.bluehouse.enablevolte.components.PremiumStatusChip
+import dev.bluehouse.enablevolte.components.StatusTone
 import dev.bluehouse.enablevolte.uniqueName
 import java.net.HttpURLConnection
 import java.net.URL
@@ -85,7 +96,15 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
             var restoreRootForce = false
             var restoreShizukuSnapshot = false
             var restoreShizukuBands = true
+            var wifiIsolationSession: MobileRadioIsolationSession? = null
             try {
+                status = context.getString(R.string.mobile_only_disabling_wifi)
+                val isolation = withContext(Dispatchers.IO) {
+                    MobileRadioIsolation.begin()
+                }
+                wifiIsolationSession = isolation.session
+                check(isolation.active) { isolation.message }
+                status = isolation.message
                 if (aggressive) {
                     status = context.getString(R.string.aggressive_opening_gates)
                     withContext(Dispatchers.IO) {
@@ -123,8 +142,9 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
                     modeLabel = if (aggressive) {
                         "Aggressive 5G test; temporary Android-side gates plus opt-in traffic"
                     } else {
-                        "Standard diagnostic; no settings changed"
+                        "Standard diagnostic; radio policy unchanged; Wi-Fi temporarily disabled"
                     },
+                    wifiIsolation = isolation.message,
                 ) { completed, _ ->
                     progress = completed
                 }
@@ -152,6 +172,10 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
                         } else {
                             context.getString(R.string.aggressive_restore_incomplete)
                         }
+                    }
+                    val wifiRestored = wifiIsolationSession?.restore() ?: true
+                    if (!wifiRestored) {
+                        error = context.getString(R.string.mobile_only_wifi_restore_failed)
                     }
                     runningMode = null
                     activeJob = null
@@ -182,10 +206,15 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
     }
 
     Column(
-        modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp).verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        HeaderText(stringResource(R.string.field_test))
+        PremiumPageIntro(
+            eyebrow = stringResource(R.string.premium_field_eyebrow),
+            title = stringResource(R.string.premium_field_title),
+            description = stringResource(R.string.premium_field_description),
+        )
+        PremiumSectionLabel(stringResource(R.string.sim_detected))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             subscriptions.forEach { subscription ->
                 FilterChip(
@@ -197,9 +226,33 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
         }
 
         GlassSurface(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.standard_field_test), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.field_test_description))
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Filled.Science, null, tint = MaterialTheme.colorScheme.primary)
+                        Text(stringResource(R.string.standard_field_test), style = MaterialTheme.typography.titleLarge)
+                    }
+                    PremiumStatusChip(stringResource(R.string.premium_safe), StatusTone.SUCCESS)
+                }
+                Text(
+                    stringResource(R.string.field_test_privacy),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (runningMode == "standard") {
+                    LinearProgressIndicator(
+                        progress = { progress.toFloat() / FieldTestReporter.SAMPLE_COUNT },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
                 Button(
                     enabled = selectedSubscription != null && runningMode == null,
                     onClick = { start(aggressive = false) },
@@ -217,10 +270,36 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
         }
 
         GlassSurface(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(R.string.aggressive_5g_test), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.aggressive_5g_description))
+            Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Icon(Icons.Filled.Bolt, null, tint = MaterialTheme.colorScheme.tertiary)
+                        Text(
+                            stringResource(R.string.aggressive_5g_test),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.tertiary,
+                        )
+                    }
+                    PremiumStatusChip(stringResource(R.string.premium_expert), StatusTone.WARNING)
+                }
+                Text(
+                    stringResource(R.string.aggressive_5g_description),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (runningMode == "aggressive") {
+                    LinearProgressIndicator(
+                        progress = { progress.toFloat() / FieldTestReporter.SAMPLE_COUNT },
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.tertiary,
+                    )
                     Button(
                         onClick = { activeJob?.cancel() },
                         modifier = Modifier.fillMaxWidth(),
@@ -245,24 +324,38 @@ fun FieldTestPage(subscriptions: List<SubscriptionInfo>) {
             }
         }
 
-        status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        if (status != null || error != null) {
+            GlassSurface(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    PremiumStatusChip(
+                        label = if (error == null) {
+                            stringResource(R.string.premium_active)
+                        } else {
+                            stringResource(R.string.premium_attention)
+                        },
+                        tone = if (error == null) StatusTone.ACCENT else StatusTone.DANGER,
+                    )
+                    status?.let { Text(it, color = MaterialTheme.colorScheme.primary) }
+                    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            }
+        }
         result?.let { report ->
             GlassSurface(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(R.string.field_test_saved, report.fileName))
-                    Text(report.summary, color = MaterialTheme.colorScheme.primary)
-                    OutlinedButton(onClick = { share(report) }) {
+                Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PremiumStatusChip(stringResource(R.string.field_test_complete), StatusTone.SUCCESS)
+                    Text(
+                        stringResource(R.string.field_test_saved, report.fileName),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(report.summary, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
+                    OutlinedButton(onClick = { share(report) }, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Filled.Share, contentDescription = null)
                         Text(stringResource(R.string.share_field_test))
                     }
                 }
             }
         }
-        Text(
-            stringResource(R.string.field_test_privacy),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

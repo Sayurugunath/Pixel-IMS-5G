@@ -42,6 +42,7 @@ import dev.bluehouse.enablevolte.UpdateManager
 import dev.bluehouse.enablevolte.UpdateDownloadProgress
 import dev.bluehouse.enablevolte.components.ClickablePropertyView
 import dev.bluehouse.enablevolte.components.HeaderText
+import dev.bluehouse.enablevolte.components.WhatsNewDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -61,6 +62,8 @@ fun About() {
     var release by remember { mutableStateOf<ReleaseInfo?>(null) }
     var downloadId by rememberSaveable { mutableStateOf(UpdateManager.activeDownloadId(context)) }
     var downloadProgress by remember { mutableStateOf<UpdateDownloadProgress?>(null) }
+    var showCurrentChangelog by rememberSaveable { mutableStateOf(false) }
+    val currentChangelog = remember { UpdateManager.currentChangelog(context) }
 
     fun checkUpdates() {
         checking = true
@@ -145,6 +148,14 @@ fun About() {
 
         HeaderText(stringResource(R.string.updates))
         ClickablePropertyView(label = stringResource(R.string.installed_version), value = BuildConfig.VERSION_NAME)
+        currentChangelog?.let {
+            OutlinedButton(
+                onClick = { showCurrentChangelog = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.view_whats_new, it.version))
+            }
+        }
         ClickablePropertyView(label = stringResource(R.string.update_status), value = status)
         Button(onClick = { checkUpdates() }, enabled = !checking, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Refresh, contentDescription = null)
@@ -228,5 +239,13 @@ fun About() {
             onClick = { UpdateManager.open(context, "https://www.gnu.org/licenses/gpl-3.0.html") },
         )
         Text(stringResource(R.string.unofficial_notice), modifier = Modifier.padding(8.dp, 0.dp, 8.dp, 32.dp))
+    }
+    if (showCurrentChangelog) {
+        currentChangelog?.let {
+            WhatsNewDialog(
+                changelog = it,
+                onDismiss = { showCurrentChangelog = false },
+            )
+        }
     }
 }

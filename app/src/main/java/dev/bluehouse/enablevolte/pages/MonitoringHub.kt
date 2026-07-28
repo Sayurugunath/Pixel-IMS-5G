@@ -21,8 +21,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -40,11 +43,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import dev.bluehouse.enablevolte.MobileRadioIsolation
+import dev.bluehouse.enablevolte.MobileRadioIsolationSession
 import dev.bluehouse.enablevolte.PrivilegeManager
 import dev.bluehouse.enablevolte.PrivilegeMode
+import dev.bluehouse.enablevolte.R
 import dev.bluehouse.enablevolte.SubscriptionModer
 import dev.bluehouse.enablevolte.components.GlassSurface
 import dev.bluehouse.enablevolte.components.HeaderText
+import dev.bluehouse.enablevolte.components.OnLifecycleEvent
+import dev.bluehouse.enablevolte.components.PremiumPageIntro
+import dev.bluehouse.enablevolte.components.PremiumStatusChip
+import dev.bluehouse.enablevolte.components.StatusTone
 import dev.bluehouse.enablevolte.uniqueName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -65,29 +76,123 @@ private enum class MonitorSection(val label: String) {
 @Suppress("ktlint:standard:function-naming")
 @Composable
 fun MonitoringHub(subscriptions: List<SubscriptionInfo>) {
+    val context = LocalContext.current
     var section by rememberSaveable { mutableStateOf(MonitorSection.LIVE) }
+    var isolationSession by remember { mutableStateOf<MobileRadioIsolationSession?>(null) }
+    var isolationMessage by remember { mutableStateOf<String?>(null) }
+    var isolationError by remember { mutableStateOf<String?>(null) }
+    var isolationGeneration by remember { mutableStateOf(0) }
+
+    fun restoreWifi() {
+        val restored = isolationSession?.restore() ?: true
+        isolationSession = null
+        if (!restored) {
+            isolationError = context.getString(R.string.mobile_only_wifi_restore_failed)
+        }
+    }
+
+    LaunchedEffect(isolationGeneration) {
+        if (isolationSession == null) {
+            isolationError = null
+            isolationMessage = context.getString(R.string.mobile_only_disabling_wifi)
+            val result = withContext(Dispatchers.IO) { MobileRadioIsolation.begin() }
+            isolationSession = result.session
+            isolationMessage = result.message
+            if (!result.active) isolationError = result.message
+        }
+    }
+    OnLifecycleEvent { _, event ->
+        when (event) {
+            Lifecycle.Event.ON_START -> {
+                if (isolationSession == null) isolationGeneration += 1
+            }
+            Lifecycle.Event.ON_STOP -> restoreWifi()
+            else -> Unit
+        }
+    }
+    DisposableEffect(Unit) {
+        onDispose { isolationSession?.restore() }
+    }
+
     Column {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        PremiumPageIntro(
+            eyebrow = context.getString(R.string.premium_monitor_eyebrow),
+            title = context.getString(R.string.premium_monitor_title),
+            description = context.getString(R.string.premium_monitor_description),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+        )
+        GlassSurface(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
         ) {
-            MonitorSection.entries.forEach {
-                FilterChip(
-                    selected = section == it,
-                    onClick = { section = it },
-                    label = { Text(it.label) },
-                )
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        Icons.Filled.WifiOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                    Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                        Text(
+                            context.getString(R.string.premium_mobile_path),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            if (isolationError != null) {
+                                context.getString(R.string.premium_monitor_paused)
+                            } else {
+                                isolationMessage ?: context.getString(R.string.mobile_only_disabling_wifi)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    PremiumStatusChip(
+                        label = when {
+                            isolationSession != null -> context.getString(R.string.premium_active)
+                            isolationError != null -> context.getString(R.string.premium_attention)
+                            else -> context.getString(R.string.premium_isolating)
+                        },
+                        tone = when {
+                            isolationSession != null -> StatusTone.SUCCESS
+                            isolationError != null -> StatusTone.DANGER
+                            else -> StatusTone.ACCENT
+                        },
+                    )
+                }
+                isolationError?.let { message ->
+                    Text(message, color = MaterialTheme.colorScheme.error)
+                    OutlinedButton(onClick = { isolationGeneration += 1 }) {
+                        Text(context.getString(R.string.retry))
+                    }
+                }
             }
         }
-        when (section) {
-            MonitorSection.LIVE -> Monitor(subscriptions)
-            MonitorSection.ATTACH -> AttachTracePage(subscriptions)
-            MonitorSection.RADIO -> PhysicalChannelsPage()
-            MonitorSection.CONFIG -> CarrierConfigDiffPage(subscriptions)
-            MonitorSection.CAPABILITIES -> NrCapabilitiesPage(subscriptions)
+        if (isolationSession != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                MonitorSection.entries.forEach {
+                    FilterChip(
+                        selected = section == it,
+                        onClick = { section = it },
+                        label = { Text(it.label) },
+                    )
+                }
+            }
+            when (section) {
+                MonitorSection.LIVE -> Monitor(subscriptions)
+                MonitorSection.ATTACH -> AttachTracePage(subscriptions)
+                MonitorSection.RADIO -> PhysicalChannelsPage()
+                MonitorSection.CONFIG -> CarrierConfigDiffPage(subscriptions)
+                MonitorSection.CAPABILITIES -> NrCapabilitiesPage(subscriptions)
+            }
         }
     }
 }

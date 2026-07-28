@@ -36,6 +36,9 @@ object UpdateManager {
     private const val LATEST_RELEASE_API = "https://api.github.com/repos/barrylk/Pixel-IMS-5G/releases/latest"
     private const val PREFS = "github_updater"
     private const val DOWNLOAD_ID = "download_id"
+    private const val PENDING_VERSION = "pending_update_version"
+    private const val PENDING_NOTES = "pending_update_notes"
+    private const val LAST_SHOWN_CHANGELOG = "last_shown_changelog"
 
     fun latestRelease(): ReleaseInfo {
         val connection = URL(LATEST_RELEASE_API).openConnection() as HttpURLConnection
@@ -96,8 +99,43 @@ object UpdateManager {
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
         val manager = context.getSystemService(DownloadManager::class.java)
         val id = manager.enqueue(request)
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(DOWNLOAD_ID, id).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putLong(DOWNLOAD_ID, id)
+            .putString(PENDING_VERSION, release.version)
+            .putString(PENDING_NOTES, release.notes)
+            .apply()
         return id
+    }
+
+    fun changelogToShow(context: Context): InstalledChangelog? {
+        val current = BuildConfig.VERSION_NAME
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (preferences.getString(LAST_SHOWN_CHANGELOG, null) == current) return null
+        return currentChangelog(context)
+    }
+
+    fun currentChangelog(context: Context): InstalledChangelog? {
+        val current = BuildConfig.VERSION_NAME
+        val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val pendingVersion = preferences.getString(PENDING_VERSION, null)
+        val pendingNotes = preferences.getString(PENDING_NOTES, null).orEmpty()
+        return ReleaseChangelogCatalog.forVersion(current)
+            ?: if (pendingVersion == current) {
+                ReleaseChangelogCatalog.fromReleaseNotes(current, pendingNotes)
+            } else {
+                null
+            }
+    }
+
+    fun markChangelogShown(
+        context: Context,
+        version: String,
+    ) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString(LAST_SHOWN_CHANGELOG, version)
+            .apply()
     }
 
     fun activeDownloadId(context: Context): Long =
