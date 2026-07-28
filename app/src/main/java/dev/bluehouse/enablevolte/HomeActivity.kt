@@ -354,7 +354,7 @@ fun PixelIMSApp(
             WhatsNewDialog(
                 changelog = changelog,
                 onDismiss = {
-                    UpdateManager.markChangelogShown(context, changelog.version)
+                    UpdateManager.markChangelogShown(context, BuildConfig.VERSION_NAME)
                     whatsNew = null
                 },
             )

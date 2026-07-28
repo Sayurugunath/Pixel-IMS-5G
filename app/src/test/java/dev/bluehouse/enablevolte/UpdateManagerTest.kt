@@ -11,5 +11,8 @@ class UpdateManagerTest {
         assertFalse(UpdateManager.isNewer("0.12.6", "0.12.10F"))
         assertFalse(UpdateManager.isNewer("v0.12.10F", "0.12.10F"))
         assertTrue(UpdateManager.isNewer("0.12.11", "0.12.10F"))
+        assertTrue(UpdateManager.isNewer("1.0.4r", "1.0.4"))
+        assertFalse(UpdateManager.isNewer("1.0.4", "1.0.4r"))
+        assertFalse(UpdateManager.isNewer("v1.0.4r", "1.0.4r"))
     }
 }

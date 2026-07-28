@@ -21,6 +21,33 @@ data class InstalledChangelog(
 object ReleaseChangelogCatalog {
     fun forVersion(version: String): InstalledChangelog? =
         when (version.removePrefix("v")) {
+            "1.0.4r" ->
+                InstalledChangelog(
+                    version = "1.0.4 rev",
+                    items =
+                        listOf(
+                            ChangelogItem(
+                                title = "How to enable 5G",
+                                detail = "The in-app guide now starts with dedicated, step-by-step Root and Shizuku 5G setup paths using the exact controls users need.",
+                                tone = ChangelogTone.FEATURE,
+                            ),
+                            ChangelogItem(
+                                title = "Root setup made explicit",
+                                detail = "The guide covers Root Force, the Magisk regional modem compatibility patch, the required reboot, NSA-first testing, and firmware-update recovery.",
+                                tone = ChangelogTone.IMPROVEMENT,
+                            ),
+                            ChangelogItem(
+                                title = "Clear Shizuku workflow",
+                                detail = "Shizuku users get a separate Automatic-bands, Force NSA, Easy Mode, regional-profile, Monitor, and Field Test sequence.",
+                                tone = ChangelogTone.IMPROVEMENT,
+                            ),
+                            ChangelogItem(
+                                title = "Regional limit remains honest",
+                                detail = "Shizuku can open Android-side gates but cannot replace Tensor cfg.db. A modem-policy rejection can still require the Root/Magisk patch.",
+                                tone = ChangelogTone.IMPORTANT,
+                            ),
+                        ),
+                )
             "1.0.4" ->
                 InstalledChangelog(
                     version = "1.0.4",

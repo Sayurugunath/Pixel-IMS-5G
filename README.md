@@ -4,11 +4,23 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current public release: `1.0.4`. The one-time uninstall/reinstall notice applies specifically
+Current public release: `1.0.4 rev` (`v1.0.4r`). The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
 
 ## Changelog
+
+### [1.0.4 rev](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.4r)
+
+- Added prominent, step-by-step **How to enable 5G** instructions inside the
+  app for Root and Shizuku users.
+- Documented the complete Root path: Automatic bands, Force NSA, Root Force,
+  Magisk regional modem compatibility install, reboot, and field verification.
+- Documented the complete Shizuku path: Automatic bands, Force NSA, Easy Mode,
+  reversible regional profile, Monitor, and Field Test.
+- Clarified that Shizuku opens Android-side gates but cannot replace Tensor
+  `cfg.db`; modem-policy rejection may still require the Root/Magisk patch.
+- Fixed OTA comparison so `1.0.4r` is recognized as newer than `1.0.4`.
 
 ### [1.0.4](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.4)
 
@@ -104,6 +116,39 @@ The complete safety workflow is also available inside the app:
 ![Pixel IMS 5G 1.0.2r How to use guide](docs/screenshots/pixel-ims-1.0.2r-how-to.png)
 
 ## How to use
+
+### Enable 5G with Root
+
+1. On **Home**, choose **Root** and grant superuser access. The regional modem
+   compatibility patch specifically requires Magisk.
+2. Open **Controls → Band selection & LTE+**. Leave bands on **Automatic**,
+   choose **Force NSA**, and tap **Force all local 5G gates**.
+3. Under **Regional modem compatibility (root)**, confirm compatibility, tap
+   **Install patch**, approve the warning, and reboot.
+4. Return near a known 5G site with mobile data enabled. Open **Monitor** or run
+   the standard **Field Test** and verify EN-DC/NR attachment. Use SA only when
+   the carrier actually offers SA.
+
+After a Pixel firmware update, remove the old regional patch before updating,
+reboot, then validate and install a fresh patch for the new baseband.
+
+### Try 5G with Shizuku
+
+1. Start the separate Shizuku app, choose **Shizuku** on Home, and grant Pixel
+   IMS 5G permission.
+2. Open **Controls → Band selection & LTE+**. Leave bands on **Automatic** and
+   select **Force NSA**. Easy Mode can open VoLTE, LTE+, LTE+NR, and CA together.
+3. Tap **Apply Shizuku regional profile** to open and verify every reversible
+   Android-side user/carrier NR gate accessible to the shell.
+4. Test near a known 5G site with mobile data enabled. Use **Monitor** or
+   **Field Test** to check NR Available, EN-DC Available, NR state, the LTE
+   anchor, and reported modem limitations.
+
+Shizuku cannot replace Tensor `cfg.db` or modify the vendor modem profile. If
+every Android-side gate is open but EN-DC remains rejected, regional 5G may
+still require the Root/Magisk compatibility patch.
+
+### General workflow
 
 1. Open **Home** and confirm the intended Root or Shizuku backend is running,
    privileged access is granted, and the correct SIM is detected.

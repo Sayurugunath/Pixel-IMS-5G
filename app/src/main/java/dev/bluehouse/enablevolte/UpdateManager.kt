@@ -72,20 +72,36 @@ object UpdateManager {
     }
 
     fun isNewer(candidate: String, current: String = BuildConfig.VERSION_NAME): Boolean {
-        // Accept project release labels such as 0.12.10F while comparing their numeric
-        // Android release sequence. A suffix is a build label, not part of the ordering.
-        fun parts(value: String) = value
-            .removePrefix("v")
-            .split('.')
-            .map { part -> part.takeWhile(Char::isDigit).toIntOrNull() ?: 0 }
-        val candidateParts = parts(candidate)
-        val currentParts = parts(current)
-        for (index in 0 until maxOf(candidateParts.size, currentParts.size)) {
-            val left = candidateParts.getOrElse(index) { 0 }
-            val right = currentParts.getOrElse(index) { 0 }
+        data class ReleaseVersion(
+            val numbers: List<Int>,
+            val revision: Int,
+        )
+
+        fun parse(value: String): ReleaseVersion {
+            val normalized = value.removePrefix("v").trim()
+            val numbers = Regex("\\d+").findAll(normalized)
+                .take(3)
+                .map { it.value.toInt() }
+                .toList()
+            val suffix = normalized.dropWhile { it.isDigit() || it == '.' || it.isWhitespace() }
+            val revision = when {
+                suffix.isBlank() -> 0
+                suffix.equals("rev", ignoreCase = true) || suffix.equals("r", ignoreCase = true) -> 1
+                else -> suffix.lowercase().fold(0) { total, char ->
+                    (total * 37 + char.code).coerceAtMost(Int.MAX_VALUE)
+                }.coerceAtLeast(1)
+            }
+            return ReleaseVersion(numbers, revision)
+        }
+
+        val candidateVersion = parse(candidate)
+        val currentVersion = parse(current)
+        for (index in 0 until maxOf(candidateVersion.numbers.size, currentVersion.numbers.size)) {
+            val left = candidateVersion.numbers.getOrElse(index) { 0 }
+            val right = currentVersion.numbers.getOrElse(index) { 0 }
             if (left != right) return left > right
         }
-        return false
+        return candidateVersion.revision > currentVersion.revision
     }
 
     fun download(context: Context, release: ReleaseInfo): Long {

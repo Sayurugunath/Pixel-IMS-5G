@@ -150,6 +150,17 @@
     <string name="how_to_use">How to use</string>
     <string name="how_to_use_summary">New here? Read the safe workflow before changing IMS, radio profiles, or bands.</string>
     <string name="open_how_to_use">Open How to use</string>
+    <string name="how_to_5g_eyebrow">5G setup guide</string>
+    <string name="how_to_5g_title">How to enable 5G</string>
+    <string name="how_to_5g_description">Follow the path for your selected access mode. Start with NSA and Automatic bands for Sri Lankan networks, then confirm the result in Monitor or Field Test.</string>
+    <string name="how_to_root_badge">ROOT • STRONGEST LOCAL FIX</string>
+    <string name="how_to_root_5g_title">Enable 5G with Root</string>
+    <string name="how_to_root_5g_steps">1. On Home, choose Root and grant superuser access. The regional modem patch specifically requires Magisk.\n\n2. Open Controls → Band selection &amp; LTE+. Keep bands on Automatic, select Force NSA, and tap Force all local 5G gates.\n\n3. Under Regional modem compatibility (root), confirm the device is compatible, tap Install patch, approve the warning, and reboot.\n\n4. Return near a known 5G site with mobile data enabled. Open Monitor or run the standard Field Test and confirm EN-DC/NR attachment. Use SA only when the carrier actually offers SA.</string>
+    <string name="how_to_root_5g_note">After a Pixel firmware update, remove the old regional patch before updating, reboot, then validate and install a fresh patch for the new baseband. Root cannot create tower coverage or bypass carrier/SIM authorization.</string>
+    <string name="how_to_shizuku_badge">SHIZUKU • ANDROID-SIDE GATES</string>
+    <string name="how_to_shizuku_5g_title">Try 5G with Shizuku</string>
+    <string name="how_to_shizuku_5g_steps">1. Start the separate Shizuku app, choose Shizuku on Home, and grant Pixel IMS 5G permission.\n\n2. Open Controls → Band selection &amp; LTE+. Keep bands on Automatic and select Force NSA. Easy Mode can open VoLTE, LTE+, LTE+NR, and carrier aggregation together.\n\n3. Tap Apply Shizuku regional profile. The app opens every reversible Android-side user/carrier NR gate it can access and verifies the effective result.\n\n4. Test near a known 5G site with mobile data enabled. Use Monitor or Field Test to check NR Available, EN-DC Available, NR state, LTE anchor, and any reported modem limitation.</string>
+    <string name="how_to_shizuku_5g_note">Shizuku cannot replace Tensor cfg.db or modify the vendor modem profile. If every Android-side gate is open but EN-DC remains rejected, regional 5G may still require the Root/Magisk modem compatibility patch.</string>
     <string name="how_to_home_title">Home — verify access and IMS</string>
     <string name="how_to_home_body">Choose Root or Shizuku, confirm the privileged service and SIM are detected, then check IMS registration for each SIM. Use FIX only when IMS is unavailable and you want Google/carrier defaults restored.</string>
     <string name="how_to_controls_title">Controls — change IMS, 5G and LTE+</string>
