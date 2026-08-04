@@ -130,9 +130,13 @@ object PrivilegeManager {
         }
     }
 
-    fun connectRoot(context: Context, result: (Boolean, String?) -> Unit) {
+    fun connectRoot(
+        context: Context,
+        reapplyPersistedConfig: Boolean = true,
+        result: (Boolean, String?) -> Unit,
+    ) {
         if (isRootReady()) {
-            result(true, null)
+            completeRootConnection(context, reapplyPersistedConfig, result)
             return
         }
         if (rootConnection != null) {
@@ -145,7 +149,11 @@ object PrivilegeManager {
                 val ready = isRootReady()
                 Log.i(TAG, "Root service connected: component=$name ready=$ready")
                 if (!ready) rootBridge = null
-                result(ready, if (ready) null else "The root service did not start as UID 0")
+                if (ready) {
+                    completeRootConnection(context, reapplyPersistedConfig, result)
+                } else {
+                    result(ready, if (ready) null else "The root service did not start as UID 0")
+                }
             }
 
             override fun onServiceDisconnected(name: ComponentName) {
@@ -180,6 +188,27 @@ object PrivilegeManager {
             rootConnection = null
             result(false, it.message ?: "Unable to request root access")
         }
+    }
+
+    private fun completeRootConnection(
+        context: Context,
+        reapplyPersistedConfig: Boolean,
+        result: (Boolean, String?) -> Unit,
+    ) {
+        if (!reapplyPersistedConfig) {
+            result(true, null)
+            return
+        }
+        Thread {
+            val reapplied = runCatching {
+                RootCarrierConfigPersistence.reapplyAll(context.applicationContext)
+            }.onFailure {
+                Log.w(TAG, "Unable to reapply the saved Root CarrierConfig profile", it)
+            }.getOrDefault(false)
+            context.mainExecutor.execute {
+                result(true, if (reapplied) null else "The saved Root SIM profile could not be fully reapplied")
+            }
+        }.start()
     }
 
     fun disconnectRoot() {

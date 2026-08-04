@@ -912,7 +912,7 @@ class SubscriptionModer(
         // the force override afterwards.
         runCatching { restartIMSRegistration() }.onFailure { failedGates += "IMS restart" }
         runCatching {
-            publishBundle {
+            publishBundle(persistForRoot = false) {
                 it.putIntArray(
                     CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
                     intArrayOf(
@@ -970,10 +970,12 @@ class SubscriptionModer(
             }
         }
         restored = runCatching {
-            updateCarrierConfig(
-                CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
-                decode(prefs.getString(ROOT_FORCE_NR_AVAIL_PREFIX + subscriptionId, "")),
-            )
+            publishBundle(persistForRoot = false) {
+                it.putIntArray(
+                    CarrierConfigManager.KEY_CARRIER_NR_AVAILABILITIES_INT_ARRAY,
+                    decode(prefs.getString(ROOT_FORCE_NR_AVAIL_PREFIX + subscriptionId, "")),
+                )
+            }
             setBandSelectionInternal(
                 decode(prefs.getString(ROOT_FORCE_LTE_BANDS_PREFIX + subscriptionId, "")),
                 decode(prefs.getString(ROOT_FORCE_NR_BANDS_PREFIX + subscriptionId, "")),
@@ -1557,10 +1559,20 @@ class SubscriptionModer(
         }
     }
 
-    private fun publishBundle(fn: (Bundle) -> Unit) {
-        val overrideBundle = Bundle()
-        fn(overrideBundle)
-        this.overrideConfig(overrideBundle)
+    private fun publishBundle(
+        persistForRoot: Boolean = true,
+        fn: (Bundle) -> Unit,
+    ) {
+        val delta = Bundle()
+        fn(delta)
+        if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+            val store = RootCarrierConfigStore(context)
+            val merged = store.merge(subscriptionId, delta)
+            this.overrideConfig(merged)
+            if (persistForRoot) store.save(subscriptionId, merged)
+        } else {
+            this.overrideConfig(delta)
+        }
     }
 
     fun updateCarrierConfig(
@@ -1629,7 +1641,17 @@ class SubscriptionModer(
 
     fun clearCarrierConfig() {
         this.overrideConfig(null)
+        RootCarrierConfigStore(context).clear(subscriptionId)
     }
+
+    internal fun reapplyPersistedRootCarrierConfig(): Boolean =
+        runCatching {
+            check(PrivilegeManager.activeMode == PrivilegeMode.ROOT && PrivilegeManager.isRootReady())
+            val store = RootCarrierConfigStore(context)
+            if (!store.hasProfile(subscriptionId)) return true
+            this.overrideConfig(store.load(subscriptionId))
+            true
+        }.onFailure { Log.e(TAG, "Unable to reapply saved Root CarrierConfig", it) }.getOrDefault(false)
 
     fun restartIMSRegistration() {
         val telephony = this.loadCachedInterface { telephony }

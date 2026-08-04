@@ -188,6 +188,22 @@ fun Config(
                     Text(stringResource(R.string.bands))
                 }
             }
+            Text(
+                text = stringResource(
+                    if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+                        R.string.root_sim_config_persistence
+                    } else {
+                        R.string.shizuku_sim_config_persistence
+                    },
+                ),
+                color = if (PrivilegeManager.activeMode == PrivilegeMode.ROOT) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 12.dp),
+            )
             HeaderText(text = stringResource(R.string.feature_toggles))
             RadioSelectPropertyView(
                 label = stringResource(R.string.nr_architecture),
