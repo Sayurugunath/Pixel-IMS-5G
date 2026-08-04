@@ -117,6 +117,8 @@
     <string name="sim_config">SIM Config</string>
     <string name="control_center">Controls</string>
     <string name="control_center_description">Monitoring is read-only and separate. Choose a SIM below to open every IMS, 5G, LTE+, radio, CarrierConfig, expert, and band control.</string>
+    <string name="root_sim_config_persistence">Root persistence is active. SIM Config choices are saved per SIM and restored after reboot.</string>
+    <string name="shizuku_sim_config_persistence">Shizuku SIM Config changes are session-only and may reset after reboot.</string>
     <string name="controls_no_sim">No active SIM is available. Return to Home and confirm privileged access.</string>
     <string name="controls_safety_note">Use Automatic/NSA preference for normal use. SA-only and manual bands can remove calls, SMS, or data where the selected network is unavailable.</string>
     <string name="ims_controls_summary">VoLTE, VoWiFi, VoNR, NSA/SA architecture, radio mode, IMS restart, CarrierConfig, expert settings, and reset controls.</string>

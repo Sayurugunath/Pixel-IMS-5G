@@ -21,6 +21,28 @@ data class InstalledChangelog(
 object ReleaseChangelogCatalog {
     fun forVersion(version: String): InstalledChangelog? =
         when (version.removePrefix("v")) {
+            "1.0.6" ->
+                InstalledChangelog(
+                    version = "1.0.6",
+                    items =
+                        listOf(
+                            ChangelogItem(
+                                title = "Small bug fixes",
+                                detail = "Root SIM Config choices now stay together instead of later VoNR, VoWiFi, or enhanced-data-icon changes replacing earlier choices.",
+                                tone = ChangelogTone.FIX,
+                            ),
+                            ChangelogItem(
+                                title = "Persistent Root profiles",
+                                detail = "The app saves one complete profile per SIM and restores it after reboot, user unlock, app update, or Root service reconnect.",
+                                tone = ChangelogTone.IMPROVEMENT,
+                            ),
+                            ChangelogItem(
+                                title = "Safe reset behavior",
+                                detail = "Restore Google defaults also removes the saved Root profile. Shizuku controls remain session-only and may reset after reboot.",
+                                tone = ChangelogTone.IMPORTANT,
+                            ),
+                        ),
+                )
             "1.0.5" ->
                 InstalledChangelog(
                     version = "1.0.5",

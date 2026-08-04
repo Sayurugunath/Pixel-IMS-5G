@@ -8,11 +8,11 @@ import org.junit.Test
 class ReleaseChangelogTest {
     @Test
     fun currentReleaseHasStructuredHighlightedItems() {
-        val changelog = ReleaseChangelogCatalog.forVersion("v1.0.5")
+        val changelog = ReleaseChangelogCatalog.forVersion("v1.0.6")
 
         assertNotNull(changelog)
-        assertEquals("1.0.5", changelog?.version)
-        assertTrue(changelog.orEmptyItems().any { it.title == "VoLTE Fix" })
+        assertEquals("1.0.6", changelog?.version)
+        assertTrue(changelog.orEmptyItems().any { it.title == "Small bug fixes" })
     }
 
     @Test
