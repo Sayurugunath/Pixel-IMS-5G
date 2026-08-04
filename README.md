@@ -4,12 +4,21 @@ An experimental root- or Shizuku-powered IMS and radio configuration app for Goo
 
 Android application ID: `com.nirmala.pixel5gims`.
 
-Current public release: `1.0.5` (`v1.0.5`). This is a **small update** focused on
-the VoLTE fix, live IMS status indicators, and Root VoWiFi diagnostics. The one-time uninstall/reinstall notice applies specifically
+Current public release: `1.0.6` (`v1.0.6`). This is a **small bug-fix update** focused on
+keeping Root SIM Config choices stable across changes and reboots. The one-time uninstall/reinstall notice applies specifically
 to version `0.12.6`, where the application ID changed. Existing `0.12.6` installations
 can update normally to later versions.
 
 ## Changelog
+
+### [1.0.6](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.6) - small bug fixes
+
+- Fixed VoNR, VoWiFi, enhanced-data-icon, and other Root SIM controls replacing
+  one another when changed separately.
+- Root mode now saves one complete CarrierConfig profile per SIM and restores
+  it after reboot, user unlock, app update, or Root service reconnect.
+- **Restore Google defaults** also clears the saved Root profile.
+- Shizuku remains session-only and may reset after reboot, as intended.
 
 ### [1.0.5](https://github.com/barrylk/Pixel-IMS-5G/releases/tag/v1.0.5) — small update
 
