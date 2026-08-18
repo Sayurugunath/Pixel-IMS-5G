@@ -544,7 +544,7 @@ class PrivilegedService : RootService() {
                 name=Pixel IMS 5G Regional Modem Compatibility
                 version=1
                 versionCode=1
-                author=Nadeeja Nirmala
+                author=Sayuru Gunathilaka
                 description=Systemless, reversible Tensor cfg.db wildcard/PTCRB compatibility mapping.
                 """.trimIndent() + "\n",
             )

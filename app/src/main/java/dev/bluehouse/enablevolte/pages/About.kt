@@ -52,8 +52,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val GITHUB_PROFILE = "https://github.com/barrylk"
-private const val FACEBOOK_PROFILE = "https://www.facebook.com/nirmalafromslk/"
+private const val GITHUB_PROFILE = "https://github.com/Sayurugunath"
 private const val UPSTREAM_PROJECT = "https://github.com/kyujin-cho/pixel-volte-patch"
 private const val MODEM_PATCH_REFERENCE = "https://github.com/vchikalkin/Pixel-Modem-Fix"
 
@@ -156,17 +155,11 @@ fun About() {
         HeaderText(stringResource(R.string.developer))
         ClickablePropertyView(
             label = stringResource(R.string.developed_by),
-            value = "Nadeeja Nirmala",
+            value = "Sayuru Gunathilaka",
         )
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            FilledTonalButton(onClick = { UpdateManager.open(context, GITHUB_PROFILE) }, modifier = Modifier.weight(1f)) {
-                Icon(painterResource(R.drawable.ic_github), contentDescription = null)
-                Text(" GitHub")
-            }
-            FilledTonalButton(onClick = { UpdateManager.open(context, FACEBOOK_PROFILE) }, modifier = Modifier.weight(1f)) {
-                Icon(painterResource(R.drawable.ic_facebook), contentDescription = null)
-                Text(" Facebook")
-            }
+        FilledTonalButton(onClick = { UpdateManager.open(context, GITHUB_PROFILE) }, modifier = Modifier.fillMaxWidth()) {
+            Icon(painterResource(R.drawable.ic_github), contentDescription = null)
+            Text(" GitHub")
         }
         OutlinedButton(onClick = { UpdateManager.open(context, UpdateManager.ISSUES_URL) }, modifier = Modifier.fillMaxWidth()) {
             Icon(Icons.Filled.Settings, contentDescription = null)

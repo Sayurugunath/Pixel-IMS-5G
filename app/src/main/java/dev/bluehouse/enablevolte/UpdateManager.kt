@@ -31,9 +31,9 @@ data class UpdateDownloadProgress(
 }
 
 object UpdateManager {
-    const val REPOSITORY_URL = "https://github.com/barrylk/Pixel-IMS-5G"
+    const val REPOSITORY_URL = "https://github.com/Sayurugunath/PixelIMS"
     const val ISSUES_URL = "$REPOSITORY_URL/issues"
-    private const val LATEST_RELEASE_API = "https://api.github.com/repos/barrylk/Pixel-IMS-5G/releases/latest"
+    private const val LATEST_RELEASE_API = "https://api.github.com/repos/Sayurugunath/PixelIMS/releases/latest"
     private const val PREFS = "github_updater"
     private const val DOWNLOAD_ID = "download_id"
     private const val PENDING_VERSION = "pending_update_version"
