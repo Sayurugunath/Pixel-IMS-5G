@@ -46,7 +46,7 @@ jobs:
       - name: Verify OTA signing identity
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee signing-report.txt
-          grep --fixed-strings --quiet "784be02ecb5b5144008282db33e61ba285dbfcd508ff834e0905f7941b3872c9" signing-report.txt
+          grep --fixed-strings --quiet "a295285609fb912c14fedbfd600d0541614edfbfce83636b69ebb9595cae7dc6" signing-report.txt
 
       - name: Prepare release asset
         run: cp app/build/outputs/apk/release/app-release.apk "Pixel-IMS-5G-${GITHUB_REF_NAME:-manual}.apk"
