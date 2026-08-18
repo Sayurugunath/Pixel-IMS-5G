@@ -284,20 +284,12 @@ removable systemless module for the next reboot. It cannot create n78 coverage, 
 LTE cell advertise EN-DC, bypass subscriber/device entitlement, or force the network to
 accept an SCG addition.
 
-## Fork maintainer
-
-Maintained by **Sayuru Gunathilaka**.
-
-- [Fork Repository](https://github.com/Sayurugunath/PixelIMS)
-- [Releases & Downloads](https://github.com/Sayurugunath/PixelIMS/releases)
-- [Issues and feedback](https://github.com/Sayurugunath/PixelIMS/issues)
-
 ## Developer and support
 
-Developed by **Nadeeja Nirmala**.
+Developed by **Sayuru Gunathilaka**.
 
-- [GitHub](https://github.com/barrylk)
-- [Facebook](https://www.facebook.com/nirmalafromslk/)
+- [GitHub](https://github.com/Sayurugunath)
+- [Bug reports and feedback](https://github.com/Sayurugunath/PixelIMS/issues)
 - [Upstream Repository](https://github.com/barrylk/Pixel-IMS-5G)
 
 
