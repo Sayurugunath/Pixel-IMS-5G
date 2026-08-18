@@ -70,9 +70,11 @@ The project compiles with Android SDK 36 and JDK 17 or newer. It needs a full/pa
 .\gradlew.bat assembleDebug
 ```
 
-## Origin and license
+## Maintainer, origin and license
 
-Developed by **Nadeeja Nirmala** — [GitHub](https://github.com/barrylk) · [Facebook](https://www.facebook.com/nirmalafromslk/) · [Issues and feedback](https://github.com/barrylk/Pixel-IMS-5G/issues).
+Maintained by **Sayuru Gunathilaka** — [Fork Repository](https://github.com/Sayurugunath/PixelIMS) · [Issues and feedback](https://github.com/Sayurugunath/PixelIMS/issues).
+
+Developed by **Nadeeja Nirmala** — [GitHub](https://github.com/barrylk) · [Facebook](https://www.facebook.com/nirmalafromslk/) · [Upstream Repository](https://github.com/barrylk/Pixel-IMS-5G).
 
 This project is a modified version of [kyujin-cho/pixel-volte-patch](https://github.com/kyujin-cho/pixel-volte-patch), based on commit `0b4b5fef31e4e4904eece60bdb360ea3111ac3aa`. Modifications add radio-mode control, 5G carrier configuration, a unique application ID, and offline version display.
 

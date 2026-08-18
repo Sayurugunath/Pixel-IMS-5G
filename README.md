@@ -275,7 +275,7 @@ database fix remains root-only.
 ## Install
 
 1. Have either a compatible root manager (Magisk, KernelSU, or APatch) or install and start [Shizuku](https://shizuku.rikka.app/).
-2. Download the latest APK from [Releases](https://github.com/barrylk/Pixel-IMS-5G/releases/latest).
+2. Download the latest APK from [Releases](https://github.com/Sayurugunath/PixelIMS/releases/latest).
 3. Install Pixel IMS 5G, choose Root or Shizuku, and approve that backend.
 
 Changing radio modes can remove calls, SMS, or data. The app can change modem preferences and carrier configuration, but cannot create network coverage, EN-DC support, carrier authorization, or SA registration.
@@ -288,13 +288,22 @@ removable systemless module for the next reboot. It cannot create n78 coverage, 
 LTE cell advertise EN-DC, bypass subscriber/device entitlement, or force the network to
 accept an SCG addition.
 
+## Fork maintainer
+
+Maintained by **Sayuru Gunathilaka**.
+
+- [Fork Repository](https://github.com/Sayurugunath/PixelIMS)
+- [Releases & Downloads](https://github.com/Sayurugunath/PixelIMS/releases)
+- [Issues and feedback](https://github.com/Sayurugunath/PixelIMS/issues)
+
 ## Developer and support
 
 Developed by **Nadeeja Nirmala**.
 
 - [GitHub](https://github.com/barrylk)
 - [Facebook](https://www.facebook.com/nirmalafromslk/)
-- [Bug reports and feedback](https://github.com/barrylk/Pixel-IMS-5G/issues)
+- [Upstream Repository](https://github.com/barrylk/Pixel-IMS-5G)
+
 
 ## Origin and license
 
