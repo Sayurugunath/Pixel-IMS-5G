@@ -136,10 +136,6 @@ Root VoWiFi repair:
 | **Controls** | **Root VoWiFi repair** |
 | ![Pixel IMS 5G 1.0.5 Controls page](docs/screenshots/pixel-ims-1.0.5-controls.png) | ![Pixel IMS 5G 1.0.5 Root VoWiFi repair](docs/screenshots/pixel-ims-1.0.5-root-vowifi.png) |
 
-The indicator switch and its Root-only behavior are documented inside About:
-
-![Pixel IMS 5G 1.0.5 status-bar indicator setting](docs/screenshots/pixel-ims-1.0.5-about-status-icons.png)
-
 ## How to use
 
 ### Enable 5G with Root
