@@ -124,18 +124,6 @@ can update normally to later versions.
 > `com.nirmala.pixel5gims`, so users of the older package had to uninstall it
 > once. Updates from `0.12.6` onward, including `1.0.5`, install normally.
 
-## Version 1.0.5 interface
-
-Version 1.0.5 keeps the four focused Home, Controls, Monitor, and Field Test
-areas, while adding live right-side VoLTE/VoWiFi indicators and a reversible
-Root VoWiFi repair:
-
-| What's new | Home with live VoLTE |
-| --- | --- |
-| ![Pixel IMS 5G 1.0.5 liquid-glass changelog](docs/screenshots/pixel-ims-1.0.5-whats-new.png) | ![Pixel IMS 5G 1.0.5 Home with boxed VoLTE status icon](docs/screenshots/pixel-ims-1.0.5-home.png) |
-| **Controls** | **Root VoWiFi repair** |
-| ![Pixel IMS 5G 1.0.5 Controls page](docs/screenshots/pixel-ims-1.0.5-controls.png) | ![Pixel IMS 5G 1.0.5 Root VoWiFi repair](docs/screenshots/pixel-ims-1.0.5-root-vowifi.png) |
-
 ## How to use
 
 ### Enable 5G with Root

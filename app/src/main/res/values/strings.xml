@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Pixel IMS 5G</string>
-    <string name="app_signature">by Sayuru</string>
+    <string name="app_signature">by Sayuru Gunathilaka</string>
     <string name="view_whats_new">What’s new in %1$s</string>
     <string name="whats_new_eyebrow">What’s new</string>
     <string name="whats_new_version">Pixel IMS 5G %1$s</string>
