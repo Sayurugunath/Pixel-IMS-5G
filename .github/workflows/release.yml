@@ -37,7 +37,11 @@ jobs:
 
       - name: Build signed APK
         run: |
+          TAG_VER="${GITHUB_REF_NAME:-v1.0.8}"
+          VERSION_NAME="${TAG_VER#v}"
           ./gradlew :app:assembleRelease \
+            -PappVersionName="$VERSION_NAME" \
+            -PappVersionCode=28 \
             -Pandroid.injected.signing.store.file="$HOME/.android/debug.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \

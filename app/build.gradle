@@ -4,17 +4,20 @@ plugins {
     id 'org.jetbrains.kotlin.plugin.compose'
 }
 
+def appVerName = project.findProperty("appVersionName") ?: "DEV"
+def appVerCode = (project.findProperty("appVersionCode") ?: "1").toInteger()
+
 android {
     namespace 'dev.bluehouse.enablevolte'
     compileSdk 36
 
     defaultConfig {
-        applicationId "com.nirmala.pixel5gims"
+        applicationId "io.github.sayurugunath.pixelims"
         // Every Tensor Pixel (Pixel 6 and newer) launched on Android 12 / API 31 or later.
         minSdk 31
         targetSdk 36
-        versionCode 26
-        versionName "1.0.6"
+        versionCode appVerCode
+        versionName appVerName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
